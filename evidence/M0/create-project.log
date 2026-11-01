@@ -1,0 +1,95 @@
+[Licensing::Module] Trying to connect to existing licensing client channel...
+[Licensing::IpcConnector] Channel LicenseClient-Dewangga Ramadhan H doesn't exist
+Built from '6000.3/staging' branch; Version is '6000.3.18f1 (5ebeb53e4c07) revision 6209205'; Using compiler version '194234433'; Build Type 'Release'
+OS: 'Windows 11  (10.0.26300) CoreSingleLanguage' Language: 'en' Physical Memory: 20187 MB
+BatchMode: 1, IsHumanControllingUs: 0, StartBugReporterOnCrash: 0, Is64bit: 1
+System  architecture: x64
+Process architecture: x64
+Date: 2026-11-01T16:10:34Z
+[Licensing::Module] Successfully launched the LicensingClient (PId: 10724)
+
+COMMAND LINE ARGUMENTS:
+C:\Program Files\Unity\Hub\Editor\6000.3.18f1\Editor\Unity.exe
+-batchmode
+-quit
+-createProject
+C:/Users/Dewangga Ramadhan H/Documents/Portofolio/JustSmash/Game
+-logFile
+C:/Users/Dewangga Ramadhan H/Documents/Portofolio/JustSmash/evidence/M0/create-project.log
+C:/Users/Dewangga Ramadhan H/Documents/Portofolio/JustSmash/Game
+[UnityMemory] Configuration Parameters - Can be set up in boot.config
+    "memorysetup-temp-allocator-size-nav-mesh-worker=65536"
+    "memorysetup-temp-allocator-size-audio-worker=65536"
+    "memorysetup-temp-allocator-size-gfx=262144"
+    "memorysetup-allocator-temp-initial-block-size-main=262144"
+    "memorysetup-allocator-temp-initial-block-size-worker=262144"
+    "memorysetup-temp-allocator-size-background-worker=32768"
+    "memorysetup-temp-allocator-size-job-worker=262144"
+    "memorysetup-temp-allocator-size-preload-manager=33554432"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-temp-allocator-size-gi-baking-worker=262144"
+    "memorysetup-bucket-allocator-granularity=16"
+    "memorysetup-bucket-allocator-bucket-count=8"
+    "memorysetup-bucket-allocator-block-size=33554432"
+    "memorysetup-bucket-allocator-block-count=8"
+    "memorysetup-main-allocator-block-size=16777216"
+    "memorysetup-thread-allocator-block-size=16777216"
+    "memorysetup-gfx-main-allocator-block-size=16777216"
+    "memorysetup-gfx-thread-allocator-block-size=16777216"
+    "memorysetup-cache-allocator-block-size=4194304"
+    "memorysetup-typetree-allocator-block-size=2097152"
+    "memorysetup-profiler-bucket-allocator-granularity=16"
+    "memorysetup-profiler-bucket-allocator-bucket-count=8"
+    "memorysetup-profiler-bucket-allocator-block-size=33554432"
+    "memorysetup-profiler-bucket-allocator-block-count=8"
+    "memorysetup-profiler-allocator-block-size=16777216"
+    "memorysetup-profiler-editor-allocator-block-size=1048576"
+    "memorysetup-temp-allocator-size-main=16777216"
+    "memorysetup-job-temp-allocator-block-size=2097152"
+    "memorysetup-job-temp-allocator-block-size-background=1048576"
+    "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
+    "memorysetup-temp-allocator-size-cloud-worker=32768"
+Player connection [17020]  Target information:
+
+Player connection [17020]  * "[IP] 192.168.37.1 [Port] 55504 [Flags] 2 [Guid] 310381367 [EditorId] 310381367 [Version] 1048832 [Id] WindowsEditor(7,LAPTOP-OHVB8NAO) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+
+Player connection [17020]  * "[IP] 192.168.182.1 [Port] 55504 [Flags] 2 [Guid] 310381367 [EditorId] 310381367 [Version] 1048832 [Id] WindowsEditor(7,LAPTOP-OHVB8NAO) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+
+Player connection [17020]  * "[IP] 192.168.20.146 [Port] 55504 [Flags] 2 [Guid] 310381367 [EditorId] 310381367 [Version] 1048832 [Id] WindowsEditor(7,LAPTOP-OHVB8NAO) [Debug] 1 [PackageName] WindowsEditor [ProjectName] Editor" 
+
+Player connection [17020] Host joined multi-casting on [225.0.0.222:54997]...
+Player connection [17020] Host joined alternative multi-casting on [225.0.0.222:34997]...
+Input System module state changed to: Initialized.
+[Physics::Module] Initialized fallback backend.
+[Physics::Module] Id: 0xdecafbad
+[Package Manager] Connected to IPC stream "Upm-24676" after 0.2 seconds.
+[Licensing::Module] Licensing is not yet initialized.
+Starting IPC server.
+Waiting for clients to connect on \\.\pipe\Unity-LicenseClient-Dewangga Ramadhan H, press Ctrl-C to exit.
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Dewangga Ramadhan H" at "2026-11-01T16:10:39.0863833Z"
+[Licensing::Client] Code 10 while verifying Licensing Client signature (process Id: 10724, path: "C:/Program Files/Unity/Hub/Editor/6000.3.18f1/Editor/Data/Resources/Licensing/Client/Unity.Licensing.Client.exe")
+[Licensing::Module] LicensingClient has failed validation; ignoring
+[Licensing::Client] Handshaking with LicensingClient:
+  Version:                 1.18.1+9fbee8e
+  Session Id:              707634c1596341d9808fe617b0e735c5
+  Correlation Id:          9dc0ab76367e2a50b8432342e8c92911
+  External correlation Id: 4940094057419220093
+  Machine Id:              IdqN9PMd7PdwIGmATvSbfQnMkvw=
+[Licensing::Module] Successfully connected to LicensingClient on channel: "LicenseClient-Dewangga Ramadhan H" (connect: 4.37s, validation: 0.54s, handshake: 0.08s)
+[Licensing::IpcConnector] Successfully connected to: "LicenseClient-Dewangga Ramadhan H-notifications" at "2026-11-01T16:10:39.705738Z"
+[Licensing::Module] Connected to LicensingClient (PId: 10724, launch time: 0.04, total connection time: 4.99s)
+[Licensing::Module] Error: Access token is unavailable; failed to update
+[Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+[Licensing::Client] Successfully updated license, isAsync: False, time: 0.05
+[Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+[Licensing::Module] Error: 'com.unity.editor.headless' was not found.
+[Licensing::Module] Licensing Background thread has ended after 5.09s
+[Licensing::Module] Licensing is initialized (took 3.16s).
+[Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+[Licensing::Module] Error: 'com.unity.editor.headless' was not found.
+[Licensing::Client] Error: Code 404 while processing request (status: Found 0 entitlement groups and 0 free entitlements matching requested entitlement ids)
+No valid Unity Editor license found. Please activate your license.
+Exiting without the bug reporter. Application will terminate with return code 198Shut down.

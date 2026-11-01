@@ -1,0 +1,13 @@
+/.backups/
+/Game/[Ll]ibrary/
+/Game/[Tt]emp/
+/Game/[Oo]bj/
+/Game/[Ll]ogs/
+/Game/[Uu]serSettings/
+/Game/.vs/
+/builds/
+*.csproj
+*.sln
+*.user
+*.keystore
+*.jks
