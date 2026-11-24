@@ -1,13 +1,54 @@
-/.backups/
-/Game/[Ll]ibrary/
-/Game/[Tt]emp/
-/Game/[Oo]bj/
-/Game/[Ll]ogs/
-/Game/[Uu]serSettings/
-/Game/.vs/
-/builds/
+# ---------------------------------------------------------------
+# JustSmash - cakupan repository
+# Repo memuat source, konfigurasi Unity, test, dan dokumen.
+# Artefak besar (evidence, video, backup, build, aset pihak ketiga
+# yang belum diintegrasikan) tetap di disk, tidak masuk git.
+# ---------------------------------------------------------------
+
+# Unity generated
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/Game/
+.vs/
 *.csproj
 *.sln
 *.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Unity Test Runner scratch scenes
+/Assets/InitTestScene*.unity
+/Assets/InitTestScene*.unity.meta
+
+# Evidence & artefak capture (lokal, 16 GB)
+/evidence/
+/.utmp/
+*.mp4
+*.zip
+
+# Backup lokal
+/.backups/
+*.bak
+
+# Set karakter pihak ketiga, 527 MB, TIDAK diintegrasikan (lihat docs/02_ROADMAP.md T2a)
+/Assets/npc_casual_set_00/
+*.rar
+
+# Data runtime lokal & state editor
+/.hermes/local-game-data/
+/.obsidian/workspace*.json
+
+# Material signing
 *.keystore
 *.jks
+/Assets/npc_casual_set_00.meta
