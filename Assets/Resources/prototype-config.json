@@ -1,0 +1,1 @@
+{"version": 1, "targetFps": 30, "fixedStep": 0.02, "scoreRule": "Official15", "difficulty": "Normal", "drag": 0.065, "rallyDrain": 0.6, "moveDrain": 0, "gameRecovery": 8, "smashCost": 3, "shotCost": 1, "jumpCost": 4, "aiSpeed": 4.5, "singlesHalfWidth": 2.59, "doublesHalfWidth": 3.05, "halfLength": 6.7, "netHeight": 1.55, "logging": true}

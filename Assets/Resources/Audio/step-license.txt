@@ -1,0 +1,11 @@
+Walking Footsteps on Wood — sillygrizzlies
+Source: https://freesound.org/people/sillygrizzlies/sounds/635058/
+Published 2022-05-23. Acquired 2026-11-15 under owner approval D-058.
+CC0 1.0 Universal: https://creativecommons.org/publicdomain/zero/1.0/
+Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode.en
+Author describes foley of sneaker shoes walking on hardwood floor.
+Public HQ MP3 preview: https://cdn.freesound.org/previews/635/635058_5756735-hq.mp3
+This is not the original WAV. Four 0.26-second excerpts start at 2.58, 4.13, 5.82, 7.82 seconds.
+Edits: mono mix, DC removal, equal peak gain, 3ms fade-in and 25ms fade-out. No synthetic tone added.
+CC0 permits copying, modification, distribution and commercial use without permission or attribution requirement. Credit retained for provenance; no endorsement implied.
+Audio source/hash and processing records retained in evidence/shareable/20261115/roller-polish-040359/locomotion-audio-source/.
