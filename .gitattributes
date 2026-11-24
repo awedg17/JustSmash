@@ -1,0 +1,19 @@
+# Normalisasi line ending supaya diff Unity bisa dibaca
+* text=auto eol=lf
+
+*.unity   text
+*.prefab  text
+*.asset   text
+*.mat     text
+*.meta    text
+*.asmdef  text
+*.shader  text
+*.json    text
+*.md      text
+
+*.wav   binary
+*.ttf   binary
+*.fbx   binary
+*.png   binary
+*.exr   binary
+*.tif   binary
