@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": 1,
+      "url": "https://quaternius.com/packs/universalbasecharacters.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 2,
+      "url": "https://quaternius.com/packs/universalanimationlibrary.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 3,
+      "url": "https://quaternius.com/license.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 4,
+      "url": "https://helpx.adobe.com/creative-cloud/faq/mixamo-faq.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 5,
+      "url": "https://static.makehumancommunity.org/assets/assetpacks/shirts01.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 6,
+      "url": "https://static.makehumancommunity.org/assets/assetpacks/shoes02.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 7,
+      "url": "https://kenney.nl/assets/furniture-kit",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 8,
+      "url": "https://docs.unity3d.com/6000.3/Documentation/Manual/LightProbes-MovingObjects.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    },
+    {
+      "id": 9,
+      "url": "https://docs.unity3d.com/6000.3/Documentation/Manual/AudioFiles-introduction.html",
+      "title": "",
+      "accessed": "2026-11-04"
+    }
+  ]
+}

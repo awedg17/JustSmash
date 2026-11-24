@@ -1,0 +1,21 @@
+{
+  "userIgnoreFilters": [
+    "evidence/",
+    "Library/",
+    "Logs/",
+    "Temp/",
+    "Obj/",
+    "builds/",
+    ".backups/",
+    ".hermes/",
+    "Assets/",
+    "Packages/",
+    "ProjectSettings/",
+    "UserSettings/",
+    "Game/"
+  ],
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "attachmentFolderPath": "Brain/_attachments"
+}
