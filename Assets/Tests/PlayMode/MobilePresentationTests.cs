@@ -274,7 +274,7 @@ public class MobilePresentationTests : PreferenceFixture
             Assert.That(Legal(-wrongHalf, back), Is.True); Assert.That(Legal(-wrongHalf, back + .001f), Is.False);
         }
     }
-    [UnityTest] public IEnumerator ArenaHasOfficialsAndLiveScoreboardWithoutSpectators()
+    [UnityTest] public IEnumerator ArenaHasOfficialsAndLiveScoreboardWithStaticAudience()
     {
         yield return Boot();
         foreach (string name in new[] { "UmpireChair", "Umpire", "ServiceJudge", "ArenaScoreboard" })
@@ -283,8 +283,7 @@ public class MobilePresentationTests : PreferenceFixture
             Assert.That(item, Is.Not.Null, name + " missing from actual Boot venue");
             Assert.That(item.GetComponentsInChildren<Renderer>().Any(r => r.enabled), Is.True, name + " has no visible geometry");
         }
-        var audience = GameObject.FindObjectsByType<Transform>(FindObjectsSortMode.None).Where(t => t.name.StartsWith("Spectator-", StringComparison.Ordinal)).ToArray();
-        Assert.That(audience, Is.Empty, "D-062 requires zero spectators");
+        Assert.That(GameObject.Find("TribuneAudience"), Is.Not.Null);
         foreach (string name in new[] { "SpectatorStands", "Terrace", "Seat", "OfficialBakeSource" })
             Assert.That(GameObject.Find(name), Is.Null, name + " must not remain");
         Call("BeginExhibition"); yield return null;
@@ -295,18 +294,19 @@ public class MobilePresentationTests : PreferenceFixture
         yield return null;
         Assert.That(score.text, Does.Contain("1"), "Arena scoreboard must follow actual match score");
     }
-    [UnityTest] public IEnumerator EmptyArenaReleasesOwnedMeshesAndMaterialsOnReload()
+    [UnityTest] public IEnumerator ArenaReleasesOwnedMeshesAndMaterialsOnReload()
     {
         yield return Boot();
         var meshes = ((System.Collections.Generic.List<Mesh>)type.GetField("arenaMeshes", Hidden).GetValue(court)).ToArray();
         var materials = ((System.Collections.Generic.List<Material>)type.GetField("arenaMaterials", Hidden).GetValue(court)).ToArray();
-        Assert.That(meshes.Length, Is.GreaterThan(0), "Seated official still needs baked geometry");
-        Assert.That(GameObject.FindObjectsByType<Transform>(FindObjectsSortMode.None).Any(t => t.name.StartsWith("Spectator-", StringComparison.Ordinal)), Is.False);
+        var audienceMeshes = GameObject.Find("TribuneAudience").GetComponentsInChildren<MeshFilter>().Select(filter => filter.sharedMesh).ToArray();
+        Assert.That(audienceMeshes.Length, Is.EqualTo(6));
+        Assert.That(audienceMeshes.All(mesh => meshes.Contains(mesh)), Is.True, "Scene must own and release the audience meshes");
         yield return Boot(); yield return null;
         Assert.That(meshes.All(m => m == null), Is.True, "Leaked arena meshes on scene reload");
         Assert.That(materials.All(m => m == null), Is.True, "Leaked arena materials on scene reload");
         Assert.That(GameObject.Find("ServiceJudge"), Is.Not.Null);
-        Assert.That(GameObject.Find("SpectatorStands"), Is.Null);
+        Assert.That(GameObject.Find("TribuneAudience"), Is.Not.Null);
     }
     [UnityTest] public IEnumerator UmpireSignalsWithConnectedVisibleArmNotFaceBlock()
     {

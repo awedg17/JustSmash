@@ -42,6 +42,23 @@ public class ArenaAtmosphereTests : PreferenceFixture
         Assert.That(GameObject.Find("NetMesh"), Is.Not.Null);
         Assert.That(GameObject.Find("Umpire"), Is.Not.Null);
         Assert.That(GameObject.Find("ServiceJudge"), Is.Not.Null);
-        Assert.That(objects.Any(t => t.name.Contains("Spectator") || t.name.Contains("Bleacher")), Is.False);
+        var audience = GameObject.Find("TribuneAudience");
+        Assert.That(audience, Is.Not.Null);
+        var sections = audience.GetComponentsInChildren<MeshRenderer>();
+        Assert.That(sections.Length, Is.EqualTo(6));
+        Assert.That(sections.Select(section => section.sharedMaterial).Distinct().Count(), Is.EqualTo(1));
+        Assert.That(audience.GetComponentsInChildren<Animator>(), Is.Empty);
+        Assert.That(audience.GetComponentsInChildren<Collider>(), Is.Empty);
+        Assert.That(audience.GetComponentsInChildren<AudioSource>(), Is.Empty);
+        foreach (var section in sections)
+        {
+            Assert.That(section.enabled, Is.True);
+            Assert.That(section.shadowCastingMode, Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.Off));
+            var mesh = section.GetComponent<MeshFilter>().sharedMesh;
+            Assert.That(mesh.vertexCount, Is.InRange(100, 210));
+            Assert.That(mesh.subMeshCount, Is.EqualTo(1));
+            Assert.That(Mathf.Abs(section.bounds.center.x) - section.bounds.extents.x > 4.7f ||
+                section.bounds.min.z > 10f, Is.True, "Audience geometry must clear the court and officials");
+        }
     }
 }

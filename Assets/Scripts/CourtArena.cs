@@ -199,6 +199,92 @@ namespace JustSmash
             float height = BootDiagnostics.Current.netHeight;
             foreach (float x in new[] { -width, width }) Shape("NetPost", PrimitiveType.Cylinder, new Vector3(x, height * .5f, 0), new Vector3(.05f, height * .5f, .05f), white);
         }
+        void BuildAudience()
+        {
+            var material = new Material(SpriteShader) { name = "Tribune silhouettes" };
+            arenaMaterials.Add(material);
+            var audience = new GameObject("TribuneAudience").transform;
+            foreach (int side in new[] { -1, 1 })
+            {
+                foreach (int end in new[] { -1, 1 })
+                    BuildAudienceSection(audience, material, new Vector3(side * 6.45f, 0, end * 4.6f), Vector3.back * side, Vector3.right * side);
+                BuildAudienceSection(audience, material, new Vector3(side * 6.15f, 0, 12.8f), Vector3.right, Vector3.forward);
+            }
+        }
+        void BuildAudienceSection(Transform parent, Material material, Vector3 position, Vector3 across, Vector3 rear)
+        {
+            const int seatsPerRow = 8;
+            const float spacing = .57f;
+            var vertices = new List<Vector3>();
+            var colors = new List<Color32>();
+            var triangles = new List<int>();
+            var muted = new Color32(107, 123, 147, 255);
+            var cool = new Color32(83, 111, 131, 255);
+            var warm = new Color32(134, 123, 128, 255);
+            var fascia = new Color32(39, 56, 72, 255);
+            var section = new GameObject("TribuneSection");
+            section.transform.SetParent(parent, false);
+            section.transform.localPosition = position;
+
+            for (int row = 1; row >= 0; row--)
+            {
+                Vector3 ledge = rear * (row * .82f) + Vector3.up * (.53f + row * .44f);
+                float halfWidth = seatsPerRow * spacing / 2 + .14f;
+                Vector3 band = ledge - rear * .15f;
+                Quad(band, halfWidth, halfWidth, -.47f, .02f, fascia);
+                for (int seat = 0; seat < seatsPerRow; seat++)
+                {
+                    int pattern = seat + row * 3 + (position.x < 0 ? 2 : 0) + (position.z < 0 ? 1 : 0);
+                    if (pattern % 7 == 3) continue;
+                    float x = (seat - (seatsPerRow - 1) * .5f + row * .22f) * spacing;
+                    float height = (pattern % 3 - 1) * .035f;
+                    var tint = pattern % 4 == 0 ? warm : pattern % 2 == 0 ? muted : cool;
+                    Vector3 person = ledge + across * x;
+                    Quad(person, .12f, .17f, 0, .30f + height, tint);
+                    int head = vertices.Count;
+                    Vector3 center = person + Vector3.up * (.40f + height);
+                    for (int corner = 0; corner < 8; corner++)
+                    {
+                        float angle = corner * (Mathf.PI / 4f);
+                        AddVertex(center + across * (Mathf.Cos(angle) * .093f) + Vector3.up * (Mathf.Sin(angle) * .105f), tint);
+                    }
+                    for (int corner = 1; corner < 7; corner++) Triangle(head, head + corner, head + corner + 1);
+                }
+            }
+            var mesh = new Mesh { name = "Tribune section silhouettes" };
+            mesh.SetVertices(vertices);
+            mesh.SetColors(colors);
+            mesh.SetTriangles(triangles, 0);
+            mesh.uv = new Vector2[vertices.Count];
+            arenaMeshes.Add(mesh);
+            section.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = section.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            void Quad(Vector3 origin, float baseWidth, float topWidth, float bottom, float top, Color32 tint)
+            {
+                int start = vertices.Count;
+                AddVertex(origin - across * baseWidth + Vector3.up * bottom, tint);
+                AddVertex(origin + across * baseWidth + Vector3.up * bottom, tint);
+                AddVertex(origin + across * topWidth + Vector3.up * top, tint);
+                AddVertex(origin - across * topWidth + Vector3.up * top, tint);
+                Triangle(start, start + 1, start + 2);
+                Triangle(start, start + 2, start + 3);
+            }
+            void AddVertex(Vector3 point, Color32 tint)
+            {
+                vertices.Add(point);
+                colors.Add(tint);
+            }
+            void Triangle(int a, int b, int c)
+            {
+                triangles.Add(a);
+                triangles.Add(b);
+                triangles.Add(c);
+            }
+        }
         void BuildArena()
         {
             var ink = ArenaMaterial(new Color(.045f, .075f, .09f));
@@ -214,6 +300,7 @@ namespace JustSmash
             // ponytail: unlit diffusers imply fixtures; keep the single existing key light.
             var paper = new Material(SpriteShader) { name = "Ceiling diffuser", color = new Color(.70f, .76f, .78f) };
             arenaMaterials.Add(paper);
+            BuildAudience();
             BakeSeatedOfficial();
             foreach (int side in new[] { -1, 1 })
             {

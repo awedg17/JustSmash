@@ -237,16 +237,47 @@ namespace JustSmash
                 joint = joint.Find("RightHand" + finger + "3"); joint.localRotation = bind[joint] * Quaternion.Euler(0, 0, 40);
             }
             var thumb = hand.Find("RightHandThumb1"); thumb.localRotation = bind[thumb] * Quaternion.Euler(0, -25, 20);
-            float freePreparation = Mathf.SmoothStep(0, 1, jumpHeight / .30f) * (active ? 1 - Mathf.SmoothStep(0, 1, elapsed / .18f) : 1);
-            Vector3 leftTarget = athlete.TransformPoint(Vector3.Lerp(Vector3.Lerp(new Vector3(-.32f, 1.16f, .24f), new Vector3(-.32f, 1.48f, .25f), !low ? recovery * (1 - airborneContact) : 0), new Vector3(-.38f, 1.85f, .35f), freePreparation));
-            Solve(leftUpper, leftLower, leftHand, leftTarget, -athlete.right + athlete.forward * .3f);
+            PoseFreeArm(stroke, localStep, elapsed, recovery, airborne, airborneContact);
             PlantFeet(displacement, active && low, jumpHeight);
+        }
+        void PoseFreeArm(string stroke, Vector3 step, float elapsed, float recovery, float airborne, float airborneContact)
+        {
+            // Keep the wrist ahead of the hip and let the elbow hang under it.
+            var target = new Vector3(-.29f, 1.23f, .39f);
+            var pole = new Vector3(-.12f, -1f, -.30f);
+            float stepWeight = Mathf.Clamp01(step.magnitude * 6f);
+            target.z += Mathf.Sin(travel * (2 * Mathf.PI / GaitCycleMetres)) * .07f * stepWeight;
+            target.x -= Mathf.Min(.06f, Mathf.Abs(step.x) * .3f) * stepWeight;
+
+            float swing = recovery * Mathf.SmoothStep(0, 1, elapsed / .16f);
+            Vector3 counterbalance;
+            switch (stroke)
+            {
+                case "Net":
+                case "Lift":
+                    counterbalance = new Vector3(-.47f, 1.13f, -.08f);
+                    break;
+                case "Serve":
+                    counterbalance = new Vector3(-.29f, 1.32f, .43f);
+                    break;
+                default:
+                    counterbalance = new Vector3(-.38f, 1.52f, .35f);
+                    break;
+            }
+            target = Vector3.Lerp(target, counterbalance, swing);
+            // The airborne ready pose and first contact sample use the same target and pole.
+            float preparation = airborne * Mathf.Clamp01(airborneContact + 1 - recovery);
+            target = Vector3.Lerp(target, new Vector3(-.38f, 1.85f, .35f), preparation);
+            pole = Vector3.Lerp(pole, new Vector3(-.65f, -.45f, -.50f), preparation);
+            Solve(leftUpper, leftLower, leftHand, athlete.TransformPoint(target), athlete.TransformDirection(pole));
         }
         public void PresentReaction(bool won, float weight)
         {
             if (!float.IsFinite(weight) || weight < 0 || weight > 1) throw new ArgumentOutOfRangeException(nameof(weight));
+            if (weight == 0) return;
             Vector3 target = athlete.TransformPoint(won ? new Vector3(-.32f, 1.9f, .20f) : new Vector3(-.32f, .98f, .24f));
-            Solve(leftUpper, leftLower, leftHand, Vector3.Lerp(leftHand.position, target, weight), -athlete.right + athlete.forward * .3f);
+            var pole = Vector3.Lerp(new Vector3(-.12f, -1f, -.30f), new Vector3(-.65f, -.45f, -.50f), won ? weight : 0);
+            Solve(leftUpper, leftLower, leftHand, Vector3.Lerp(leftHand.position, target, weight), athlete.TransformDirection(pole));
             var head = Bone(Chest + "/Neck/Head");
             head.localRotation *= Quaternion.Euler((won ? -8 : 14) * weight, 0, 0);
         }
