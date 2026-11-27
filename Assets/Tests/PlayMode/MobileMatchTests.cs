@@ -264,12 +264,14 @@ public class MobileMatchTests : PreferenceFixture
         }
         finally { Application.targetFrameRate = priorFps; Time.timeScale = 1; }
     }
-    [UnityTest, Timeout(1500000), Category("Capture")] public IEnumerator CaptureOneTimespeedMatchesWithGameAudio()
+    [UnityTest, Timeout(1500000), Category("Capture")] public IEnumerator CaptureOneTimespeedMatchesWithGameAudio() => CaptureSinglesMatches(new[] { "Easy", "Normal", "Hard" });
+    [UnityTest, Timeout(600000), Category("Capture")] public IEnumerator CaptureNormalSinglesWithGameAudio() => CaptureSinglesMatches(new[] { "Normal" });
+    IEnumerator CaptureSinglesMatches(string[] difficulties)
     {
         Assert.That(Application.isBatchMode, Is.False, "Capture gate requires visible Game View; exclude Capture category from batch regression");
         yield return CaptureAt1280x720();
         Time.timeScale = 1;
-        foreach (string difficulty in new[] { "Easy", "Normal", "Hard" })
+        foreach (string difficulty in difficulties)
         {
             LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");
             yield return SceneManager.LoadSceneAsync("Boot"); yield return null;
@@ -283,16 +285,20 @@ public class MobileMatchTests : PreferenceFixture
             captureStarted = Time.realtimeSinceStartup; captureGameStarted = Time.time;
             timeline = new StreamWriter(stem + "-timeline.csv");
             timeline.WriteLine("realSeconds,gameSeconds,state,hitter,stroke,strokeElapsed,playerX,playerY,playerZ,shuttleX,shuttleY,shuttleZ,screen,flow");
-            audio.StartCapture(stem + ".f32");
             var recorder = new System.Diagnostics.Process();
             recorder.StartInfo = new System.Diagnostics.ProcessStartInfo("ffmpeg", "-hide_banner -loglevel error -n -use_wallclock_as_timestamps 1 -f rawvideo -pixel_format rgba -video_size " + Screen.width + "x" + Screen.height + " -framerate 1000 -i pipe:0 -fps_mode passthrough -enc_time_base 1:1000 -vf vflip,pad=ceil(iw/2)*2:ceil(ih/2)*2 -an -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p -movflags +faststart \"" + stem + "-video.mp4\"") { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true };
             recorder.Start();
             var result = new Result { difficulty = difficulty, seed = 71 };
             Application.targetFrameRate = 60; recordedFrames = 0; firstRecordedFrame = 0;
-            var recording = ((MonoBehaviour)court).StartCoroutine(RecordMatchFrames(recorder));
+            Coroutine recording = null;
             float began = Time.unscaledTime;
             try
             {
+                yield return new WaitForEndOfFrame();
+                audio.StartCapture(stem + ".f32");
+                firstRecordedFrame = Time.realtimeSinceStartup - captureStarted;
+                WriteFrame(recorder); recordedFrames++;
+                recording = ((MonoBehaviour)court).StartCoroutine(RecordMatchFrames(recorder));
                 yield return new WaitForSecondsRealtime(1);
                 Click("Main"); Click("Tunggal"); Click(difficulty); yield return new WaitForSecondsRealtime(1);
                 Click("Mulai"); Call("ConfigureOpponent", difficulty, 71); type.GetProperty("ReplayMode").SetValue(court, 2);
