@@ -329,6 +329,58 @@ public class FeedbackTests : PreferenceFixture
             }
         }
     }
+    [UnityTest] public IEnumerator AutomaticReplayUsesOnlyFinalSetPointAndSkipContinues()
+    {
+        yield return Boot();
+        ((Behaviour)court).enabled = false;
+        bool Replaying() => (bool)type.GetField("replaying", Hidden).GetValue(court);
+        string[] Actions() => (string[])type.GetProperty("UiActions", Hidden).GetValue(court);
+        foreach (var (points, final, mode) in new[] { (0, false, 1), (14, false, 1), (14, true, 0), (14, true, 2) })
+        {
+            Call("StartMatch"); type.GetProperty("ReplayMode").SetValue(court, mode);
+            var match = type.GetProperty("Match").GetValue(court);
+            var mt = match.GetType();
+            if (final)
+            {
+                mt.GetField("Games").SetValue(match, new[] { 1, 0 });
+                mt.GetField("GamePoints").SetValue(match, new[] { 15, 0 });
+                mt.GetField("GameNumber").SetValue(match, 2);
+                type.GetField("flowGame", Hidden).SetValue(court, 2);
+            }
+            mt.GetField("Points").SetValue(match, new[] { points, 0 });
+            Call("Serve", true);
+            type.GetField("serviceFlight", Hidden).SetValue(court, false);
+            type.GetProperty("SpectacularMoment").SetValue(court, true);
+            var replay = (IList)type.GetField("replay", Hidden).GetValue(court);
+            object frame = CallHidden("CaptureFrame");
+            for (int i = 0; i < 300; i++) replay.Add(frame);
+            GameObject.Find("Shuttle").transform.position = new Vector3(-1, .045f, 3);
+            type.GetField("velocity", Hidden).SetValue(court, Vector3.down);
+            LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(@"\[collision\] ground.*"));
+            CallHidden("FixedUpdate");
+            Assert.That(Replaying(), Is.False, "Do not replay before the review window closes");
+            if (final) Assert.That(Actions(), Does.Contain("Challenge").And.Not.Contain("Main lagi"));
+            CallHidden("ContinuePoint", 3f);
+            Assert.That(Replaying(), Is.EqualTo(points == 14 && mode != 2));
+            if (Replaying())
+            {
+                Assert.That(replay.Count, Is.InRange(2, Mathf.CeilToInt(1.5f / Time.fixedDeltaTime)));
+                Assert.That(Actions(), Is.EqualTo(new[] { "Lewati" }));
+                if (final)
+                {
+                    type.GetField("replayAt", Hidden).SetValue(court, Time.unscaledTime - (replay.Count + .5f) * Time.fixedDeltaTime * 2);
+                    CallHidden("ReplayTick");
+                }
+                else CallHidden("ActOnUi", "Lewati");
+            }
+            Assert.That(Replaying(), Is.False);
+            Assert.That(Actions(), Does.Not.Contain("Lewati"));
+            Assert.That(type.GetProperty("FlowStage").GetValue(court), Is.EqualTo(final ? "MatchEnd" : points == 14 ? "GameEnd" : "Serving"));
+            if (final) Assert.That(Actions(), Does.Contain("Main lagi").And.Not.Contain("Challenge"));
+            CallHidden("ContinuePoint", 10f);
+            Assert.That(Replaying(), Is.False, "A closing replay must not repeat");
+        }
+    }
     [UnityTest] public IEnumerator LandingMarkerStaysFixedUntilFlightEnds()
     {
         yield return Boot(); Call("Feed", "Lob");

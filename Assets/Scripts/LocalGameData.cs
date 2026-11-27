@@ -8,7 +8,14 @@ namespace JustSmash
     public static class LocalGameData
     {
         static bool OnDevice => Application.platform == RuntimePlatform.Android;
-        public static string Root => OnDevice ? Application.persistentDataPath : Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".hermes", "local-game-data"));
+#if UNITY_EDITOR
+        internal static string EditorTestRoot;
+#endif
+        public static string Root =>
+#if UNITY_EDITOR
+            EditorTestRoot ??
+#endif
+            (OnDevice ? Application.persistentDataPath : Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".hermes", "local-game-data")));
         static string KeyPath(string key)
         {
             if (string.IsNullOrEmpty(key) || key.Length > 64) throw new ArgumentException("Invalid preference key", nameof(key));

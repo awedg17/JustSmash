@@ -34,6 +34,8 @@ public class PreferenceFixture
     }
 #endif
     string directory;
+    protected string DataDirectory => directory;
+    System.Reflection.FieldInfo editorTestRoot;
     HashSet<string> originalDirectories;
     Dictionary<string, byte[]> original;
     protected string EvidenceDirectory { get; private set; }
@@ -55,10 +57,22 @@ public class PreferenceFixture
             Input.ResetInputAxes();
         }
         directory = Path.GetFullPath(Path.Combine(Application.dataPath, "..", ".hermes", "local-game-data"));
-        Directory.CreateDirectory(directory);
-        originalDirectories = new HashSet<string>(Directory.GetDirectories(directory, "*", SearchOption.AllDirectories));
-        original = new Dictionary<string, byte[]>();
-        foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories)) original.Add(file, File.ReadAllBytes(file));
+        if (TestContext.CurrentContext.Test.Name.StartsWith("Career", System.StringComparison.Ordinal))
+        {
+            var assembly = System.Array.Find(System.AppDomain.CurrentDomain.GetAssemblies(), a => a.GetType("JustSmash.LocalGameData") != null);
+            editorTestRoot = assembly.GetType("JustSmash.LocalGameData").GetField("EditorTestRoot", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(editorTestRoot, Is.Not.Null, "Never run Career fixtures against player saves");
+            directory = Path.GetFullPath(Path.Combine(Application.dataPath, "../.utmp", "justsmash-career-" + System.Guid.NewGuid().ToString("N")));
+            CreateEvidenceDirectory(directory);
+            editorTestRoot.SetValue(null, directory);
+        }
+        if (editorTestRoot == null)
+        {
+            Directory.CreateDirectory(directory);
+            originalDirectories = new HashSet<string>(Directory.GetDirectories(directory, "*", SearchOption.AllDirectories));
+            original = new Dictionary<string, byte[]>();
+            foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories)) original.Add(file, File.ReadAllBytes(file));
+        }
         string output = System.Environment.GetEnvironmentVariable("JUSTSMASH_QA_RUN");
         if (string.IsNullOrEmpty(output)) output = Path.Combine(Application.dataPath, "../.utmp/qa-" + System.Guid.NewGuid().ToString("N"));
         EvidenceDirectory = Path.Combine(output, TestContext.CurrentContext.Test.Name + "-" + System.Guid.NewGuid().ToString("N").Substring(0, 8));
@@ -82,8 +96,15 @@ public class PreferenceFixture
             captureSizeGroup.GetType().GetMethod("RemoveCustomSize").Invoke(captureSizeGroup, new object[] { addedSize }); addedSize = -1;
         }
 #endif
-        if (original == null) return;
         Time.timeScale = 1;
+        if (editorTestRoot != null)
+        {
+            editorTestRoot.SetValue(null, null);
+            editorTestRoot = null;
+            Directory.Delete(directory, true);
+            return;
+        }
+        if (original == null) return;
         foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
             if (!original.ContainsKey(file)) File.Delete(file);
         foreach (var pair in original) { Directory.CreateDirectory(Path.GetDirectoryName(pair.Key)); File.WriteAllBytes(pair.Key, pair.Value); }

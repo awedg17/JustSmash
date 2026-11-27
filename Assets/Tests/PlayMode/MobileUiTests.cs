@@ -16,7 +16,7 @@ public class MobileUiTests : PreferenceFixture
     void Click(string action)
     {
         var rect = (Rect)type.GetMethod("UiActionRect").Invoke(court, new object[] { action });
-        Assert.That(rect.width, Is.GreaterThanOrEqualTo(48));
+        Assert.That(rect.width, Is.GreaterThanOrEqualTo(48), action + " on " + Get<string>("ScreenName"));
         type.GetMethod("PointerDown", Hidden).Invoke(court, new object[] { 81, rect.center });
         type.GetMethod("PointerUp", Hidden).Invoke(court, new object[] { 81 });
     }
@@ -1298,15 +1298,270 @@ public class MobileUiTests : PreferenceFixture
         Assert.That(Get<string>("FlowStage"), Is.EqualTo("Serving"));
         Assert.That(Get<bool>("Flying"), Is.False);
     }
-    [UnityTest] public IEnumerator ExhibitionOnlyHomeHasNoCareerAndBothFormatsStillRoundTrip()
+    [UnityTest, Category("Career")] public IEnumerator CareerFinalSurvivesReopenAndBackupLockWithoutDoubleRewards()
+    {
+        string root = DataDirectory;
+        string path = System.IO.Path.Combine(root, "careers", "slot-1-v1.json");
+        string exhibition = System.IO.Path.Combine(root, "singles-v1.json");
+        byte[] originalExhibition = System.IO.File.Exists(exhibition) ? System.IO.File.ReadAllBytes(exhibition) : null;
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet"); Click("Open Kota"); Click("Main laga");
+        Assert.That(Get<bool>("DoublesMode"), Is.False);
+        Assert.That(Get<string>("MatchSummary"), Does.StartWith("Official15 | Normal"));
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+        void CloseFixtureMatch(int winner)
+        {
+            var m = Get<object>("Match");
+            var mt = m.GetType();
+            mt.GetField("Games").SetValue(m, winner == 0 ? new[] { 1, 0 } : new[] { 0, 1 });
+            mt.GetField("GamePoints").SetValue(m, winner == 0 ? new[] { 15, 0 } : new[] { 0, 15 });
+            mt.GetField("Points").SetValue(m, winner == 0 ? new[] { 14, 0 } : new[] { 0, 14 });
+            mt.GetField("GameNumber").SetValue(m, 2);
+            type.GetMethod("ScorePoint", Hidden).Invoke(court, new object[] { winner });
+            Assert.That(((Rect)Call("UiActionRect", "Ke kalender")).width, Is.Zero, "Do not commit before the review window closes");
+            type.GetMethod("ContinuePoint", Hidden).Invoke(court, new object[] { 3f });
+            type.GetMethod("Update", Hidden).Invoke(court, null);
+        }
+        int Stat(string property) { var c = Get<object>("ActiveCareer"); return (int)c.GetType().GetProperty(property).GetValue(c); }
+        CloseFixtureMatch(0);
+        Assert.That(Stat("Points"), Is.Zero);
+        byte[] semifinal = System.IO.File.ReadAllBytes(path);
+        if (Environment.GetEnvironmentVariable("JUSTSMASH_QA_INTERRUPT") == "1")
+        {
+            System.IO.File.WriteAllText(System.IO.Path.Combine(EvidenceDirectory, "ready.txt"), path);
+            yield return new WaitForSecondsRealtime(30);
+            Assert.Fail("Expected the QA runner to terminate before teardown");
+        }
+        yield return Boot(); // Fresh runtime; only the slot carries the bracket.
+        Click("Karier"); Click("Slot 1"); Click("Main laga");
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+        using (var held = new System.IO.FileStream(path + ".bak", System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
+        {
+            CloseFixtureMatch(0);
+            Assert.That(((Rect)Call("UiActionRect", "Ulang simpan")).width, Is.GreaterThan(0));
+            Assert.That(System.IO.File.ReadAllBytes(path), Is.EqualTo(semifinal));
+            Assert.That(Stat("Titles"), Is.Zero);
+        }
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Lanjut laga");
+        yield return null;
+        Assert.That(Stat("Titles"), Is.EqualTo(1), "Recover the exact final score without replaying the match");
+        Assert.That(Stat("Points"), Is.EqualTo(160));
+        Assert.That(Stat("Prize"), Is.EqualTo(800));
+        byte[] final = System.IO.File.ReadAllBytes(path);
+        type.GetMethod("RecordCareerResult", Hidden).Invoke(court, null);
+        Assert.That(System.IO.File.ReadAllBytes(path), Is.EqualTo(final));
+        Click("Ke kalender");
+        Assert.That(((Rect)Call("UiActionRect", "Sirkuit Nasional")).width, Is.GreaterThan(0));
+        Click("Arsip"); Assert.That(Get<string>("ScreenName"), Is.EqualTo("CareerArchive")); Click("Kembali");
+        yield return Boot();
+        Click("Karier"); Click("Slot 1");
+        Assert.That(Stat("Titles"), Is.EqualTo(1)); Assert.That(Stat("Prize"), Is.EqualTo(800));
+        Click("Open Kota"); Click("Main laga"); type.GetProperty("ReplayMode").SetValue(court, 2);
+        CloseFixtureMatch(1); Click("Ke kalender");
+        Assert.That(Stat("Titles"), Is.EqualTo(1)); Assert.That(Stat("Points"), Is.EqualTo(200));
+        Assert.That(Stat("Rank"), Is.EqualTo(56));
+        Assert.That(((Rect)Call("UiActionRect", "World Circuit")).width, Is.Zero);
+        Click("Latihan atlet"); Click("Tambah stamina");
+        Assert.That((string)type.GetProperty("CareerRankingLabel", Hidden)?.GetValue(court), Does.Contain("No. 1 dunia"));
+        Click("Sirkuit Nasional"); Click("Main laga");
+        Assert.That(Get<int>("StaminaStat"), Is.EqualTo(71));
+        Assert.That(Get<float>("Energy"), Is.EqualTo(101).Within(.001f));
+        Assert.That(System.IO.File.Exists(exhibition) ? System.IO.File.ReadAllBytes(exhibition) : null, Is.EqualTo(originalExhibition));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerReplayRoutesPointersAndLocksGameplay()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet"); Click("Open Kota"); Click("Main laga");
+        foreach (int pointer in new[] { -2, 23 })
+        {
+            var replay = (IList)type.GetField("replay", Hidden).GetValue(court);
+            var frame = type.GetMethod("CaptureFrame", Hidden).Invoke(court, null);
+            for (int i = 0; i < 30; i++) replay.Add(frame);
+            Assert.That(Call("BeginReplay"), Is.True);
+            Assert.That(type.GetProperty("GameplayInputEnabled", Hidden).GetValue(court), Is.False, "Replay must block gameplay while routing UI pointers");
+            var skip = (Rect)Call("UiActionRect", "Lewati");
+            Assert.That(skip.width, Is.GreaterThanOrEqualTo(48));
+            type.GetMethod("PointerDown", Hidden).Invoke(court, new object[] { pointer, skip.center });
+            Assert.That(type.GetField("menuAction", Hidden).GetValue(court), Is.EqualTo("Lewati"));
+            type.GetMethod("PointerUp", Hidden).Invoke(court, new object[] { pointer });
+            Assert.That(((Rect)Call("UiActionRect", "Lewati")).width, Is.Zero);
+        }
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerFeedCannotDiscardActiveMatch()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet"); Click("Open Kota"); Click("Main laga");
+        var match = Get<object>("Match");
+        Call("Feed", "Lob"); // Same command as the F hotkey.
+        Assert.That(Get<object>("Match"), Is.SameAs(match));
+        Assert.That(Get<string>("ScreenName"), Is.EqualTo("Playing"));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerReviewResolvesBeforeReturningToCalendar()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet"); Click("Open Kota"); Click("Main laga");
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+        var match = Get<object>("Match");
+        var rules = match.GetType();
+        rules.GetField("Games").SetValue(match, new[] { 1, 0 });
+        rules.GetField("GameNumber").SetValue(match, 2);
+        rules.GetField("GamePoints").SetValue(match, new[] { 15, 0 });
+        rules.GetField("Points").SetValue(match, new[] { 14, 0 });
+        type.GetField("beforePoint", Hidden).SetValue(court, JsonUtility.ToJson(match));
+        type.GetField("lastLanding", Hidden).SetValue(court, new Vector3(0, 0, 3));
+        type.GetField("announcedIn", Hidden).SetValue(court, true);
+        type.GetField("reviewAvailable", Hidden).SetValue(court, true);
+        type.GetMethod("ScorePoint", Hidden).Invoke(court, new object[] { 0 });
+        Click("Pause");
+        Assert.That(((Rect)Call("UiActionRect", "Ke kalender")).width, Is.Zero);
+        Click("Selesaikan challenge");
+        Click("Challenge");
+        yield return null;
+        byte[] saved = System.IO.File.ReadAllBytes(CareerSlotPath);
+        var career = LoadCareer();
+        Assert.That((IList)career.GetType().GetField("history").GetValue(career), Has.Count.EqualTo(1));
+        Click("Ke kalender");
+        Assert.That(Get<string>("ScreenName"), Is.EqualTo("CareerCalendar"));
+        Assert.That(System.IO.File.ReadAllBytes(CareerSlotPath), Is.EqualTo(saved));
+    }
+    Type CareerStorage => type.Assembly.GetType("JustSmash.CareerStore");
+    object LoadCareer() => CareerStorage.GetMethod("Load").Invoke(null, new object[] { 1 });
+    void SaveCareer(object slot) => CareerStorage.GetMethod("Save").Invoke(null, new[] { slot });
+    string CareerSlotPath => System.IO.Path.Combine(DataDirectory, "careers", "slot-1-v1.json");
+
+    [UnityTest, Category("Career")] public IEnumerator CareerCorruptSnapshotFallsBackAndPreservesBackup()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet"); Click("Open Kota"); Click("Main laga");
+        Click("Pause"); Click("Simpan"); Click("Ke kalender");
+        byte[] backup = System.IO.File.ReadAllBytes(CareerSlotPath + ".bak");
+        var broken = LoadCareer();
+        broken.GetType().GetField("matchSnapshot").SetValue(broken, "{}");
+        System.IO.File.WriteAllText(CareerSlotPath, JsonUtility.ToJson(broken));
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Lanjut laga");
+        Assert.That(Get<string>("ScreenName"), Is.EqualTo("Playing"));
+        Click("Pause"); Click("Simpan");
+        Assert.That(System.IO.File.ReadAllBytes(CareerSlotPath + ".bak"), Is.EqualTo(backup));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerStaleWriterCannotRollBackNewProgress()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet");
+        var stale = LoadCareer();
+        Click("Latihan atlet");
+        byte[] current = System.IO.File.ReadAllBytes(CareerSlotPath);
+        var error = Assert.Throws<TargetInvocationException>(() => SaveCareer(stale));
+        Assert.That(error.InnerException, Is.TypeOf<InvalidOperationException>());
+        Assert.That(System.IO.File.ReadAllBytes(CareerSlotPath), Is.EqualTo(current));
+        Assert.That(LoadCareer().GetType().GetField("day").GetValue(LoadCareer()), Is.EqualTo(1));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerFallbackDoesNotReuseCorruptPrimaryRevision()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet");
+        Click("Latihan atlet");
+        Click("Latihan atlet");
+        var staleFromPrimary = LoadCareer();
+        staleFromPrimary.GetType().GetField("matchSnapshot").SetValue(staleFromPrimary, "{}");
+        System.IO.File.WriteAllText(CareerSlotPath, JsonUtility.ToJson(staleFromPrimary));
+        staleFromPrimary.GetType().GetField("matchSnapshot").SetValue(staleFromPrimary, null);
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Open Kota");
+        byte[] recovered = System.IO.File.ReadAllBytes(CareerSlotPath);
+        var error = Assert.Throws<TargetInvocationException>(() => SaveCareer(staleFromPrimary));
+        Assert.That(error.InnerException, Is.TypeOf<InvalidOperationException>());
+        Assert.That(System.IO.File.ReadAllBytes(CareerSlotPath), Is.EqualTo(recovered));
+        Assert.That(LoadCareer().GetType().GetField("tier").GetValue(LoadCareer()), Is.EqualTo(0));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerCorruptPendingDoesNotBlockSlotLoadOrSave()
+    {
+        yield return Boot();
+        Click("Karier"); Click("Slot 1"); Click("Buat Atlet"); Click("Open Kota"); Click("Main laga");
+        Click("Pause"); Click("Simpan"); Click("Ke kalender");
+        System.IO.File.WriteAllText(CareerSlotPath + ".pending", "{corrupt");
+        yield return Boot();
+        Click("Karier");
+        Assert.That((string)type.GetMethod("CareerLabel", Hidden).Invoke(court, new object[] { "Slot 1" }), Does.Not.Contain("Gagal dibaca"));
+        Click("Slot 1"); Click("Lanjut laga");
+        Assert.That(Get<string>("ScreenName"), Is.EqualTo("Playing"));
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+        var m = Get<object>("Match");
+        var mt = m.GetType();
+        mt.GetField("Games").SetValue(m, new[] { 1, 0 });
+        mt.GetField("GamePoints").SetValue(m, new[] { 15, 0 });
+        mt.GetField("Points").SetValue(m, new[] { 14, 0 });
+        mt.GetField("GameNumber").SetValue(m, 2);
+        type.GetMethod("ScorePoint", Hidden).Invoke(court, new object[] { 0 });
+        type.GetMethod("ContinuePoint", Hidden).Invoke(court, new object[] { 3f });
+        type.GetMethod("Update", Hidden).Invoke(court, null);
+        Click("Ke kalender");
+        Assert.That(Get<string>("ScreenName"), Is.EqualTo("CareerCalendar"));
+        Assert.That((IList)LoadCareer().GetType().GetField("history").GetValue(LoadCareer()), Has.Count.EqualTo(1));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerOutfitsSurviveTwoSlotsWithoutTintingOpponentsOrExhibition()
+    {
+        Color Jersey(string actor, bool patterned)
+        {
+            var skin = GameObject.Find(actor).GetComponentsInChildren<SkinnedMeshRenderer>().Single(r => r.name.Contains("tshirt"));
+            var block = new MaterialPropertyBlock(); skin.GetPropertyBlock(block);
+            if (patterned)
+            {
+                Assert.That(block.GetFloat("_Flat"), Is.Zero);
+                Assert.That(block.GetTexture("_MainTex"), Is.Not.Null);
+            }
+            return block.GetColor("_Color");
+        }
+        yield return Boot();
+        var blue = Jersey("Player", false); var orange = Jersey("Opponent", false);
+        Click("Karier"); Click("Slot 1"); Click("Ubah Penampilan");
+        Click("Model kaus"); Click("Warna kaus");
+        var first = Jersey("Player", true);
+        var player = GameObject.Find("Player").transform;
+        var front = player.rotation;
+        Click("Putar"); Assert.That(Quaternion.Angle(front, player.rotation), Is.EqualTo(180).Within(.1f));
+        Click("Simpan penampilan"); Click("Buat Atlet"); Click("Kembali");
+        Click("Slot 2"); Click("Ubah Penampilan"); Click("Warna kaus"); Click("Warna kaus");
+        var second = Jersey("Player", false);
+        Assert.That(second, Is.Not.EqualTo(first));
+        Click("Simpan penampilan"); Click("Buat Atlet");
+        yield return Boot();
+        Click("Karier"); Click("Slot 2"); Click("Ubah Penampilan");
+        Assert.That(Jersey("Player", false), Is.EqualTo(second));
+        Click("Kembali"); Click("Kembali"); Click("Slot 1"); Click("Ubah Penampilan");
+        Assert.That(Jersey("Player", true), Is.EqualTo(first));
+        Click("Kembali"); Click("Open Kota"); Click("Main laga");
+        Assert.That(Jersey("Player", true), Is.EqualTo(first));
+        Assert.That(Jersey("Opponent", false), Is.EqualTo(orange));
+        Click("Teruskan"); Click("Teruskan"); Call("Serve", true);
+        yield return new WaitForSeconds(.2f);
+        var match = Get<object>("Match"); var mt = match.GetType();
+        mt.GetField("Games").SetValue(match, new[] { 0, 1 });
+        mt.GetField("GamePoints").SetValue(match, new[] { 0, 15 });
+        mt.GetField("Points").SetValue(match, new[] { 0, 14 });
+        mt.GetField("GameNumber").SetValue(match, 2);
+        type.GetField("flying", Hidden).SetValue(court, false);
+        type.GetMethod("ScorePoint", Hidden).Invoke(court, new object[] { 1 });
+        type.GetMethod("ContinuePoint", Hidden).Invoke(court, new object[] { 3f });
+        Assert.That(((Rect)Call("UiActionRect", "Lewati")).width, Is.GreaterThan(0));
+        Assert.That(Jersey("Player", true), Is.EqualTo(first));
+        Click("Lewati"); yield return null;
+        Assert.That(Jersey("Player", true), Is.EqualTo(first));
+        Assert.That(Camera.main.WorldToViewportPoint(GameObject.Find("Player").transform.position + Vector3.up).x, Is.InRange(.5f, .95f), "Career result must frame the custom athlete even after a loss");
+        Click("Ke kalender"); Click("Kembali"); Click("Kembali");
+        Click("Main"); Click("Tunggal"); Click("Mulai");
+        Assert.That(Jersey("Player", false), Is.EqualTo(blue));
+        Assert.That(Jersey("Opponent", false), Is.EqualTo(orange));
+    }
+    [UnityTest, Category("Career")] public IEnumerator CareerAndBothExhibitionFormatsOpenFromHome()
     {
         foreach (bool doubles in new[] { false, true })
         {
             yield return Boot();
-            Assert.That((Rect)Call("UiActionRect", "Career"), Is.EqualTo(Rect.zero), "Career action must be removed from Home");
-            Assert.That(type.GetProperty("ActiveCareer"), Is.Null);
-            foreach (string name in new[] { "JustSmash.Career", "JustSmash.CareerStore" })
-                Assert.That(AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetType(name) != null), Is.False, name + " must not ship");
+            Click("Karier");
+            Assert.That(Get<string>("ScreenName"), Is.EqualTo("CareerSlots"));
+            Click("Kembali");
             Click("Main"); Click(doubles ? "Ganda" : "Tunggal"); Click("Mulai");
             Assert.That(Get<bool>("DoublesMode"), Is.EqualTo(doubles));
             Assert.That(Get<string>("EventName"), Is.EqualTo("JUST SMASH OPEN"));
@@ -1324,7 +1579,7 @@ public class MobileUiTests : PreferenceFixture
             Click("Main lagi"); Assert.That(Get<bool>("DoublesMode"), Is.EqualTo(doubles));
             Click("Pause"); Click("Menu"); Click("Ya");
             Assert.That(Get<string>("ScreenName"), Is.EqualTo("Home"));
-            Assert.That((Rect)Call("UiActionRect", "Career"), Is.EqualTo(Rect.zero));
+            Assert.That(((Rect)Call("UiActionRect", "Karier")).width, Is.GreaterThan(0));
             if (!Application.isBatchMode)
             {
                 yield return null; yield return new WaitForEndOfFrame();

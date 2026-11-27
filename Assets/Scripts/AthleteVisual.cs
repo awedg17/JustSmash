@@ -87,11 +87,37 @@ namespace JustSmash
                     materials[i] = material; toonMaterials.Add(material);
                 }
                 skin.sharedMaterials = materials;
-                if (!skin.name.Contains("tshirt")) continue;
-                var block = new MaterialPropertyBlock(); skin.GetPropertyBlock(block);
-                block.SetColor("_Color", (root.name == "Player" || root.name == "Partner") ? new Color(.12f, .40f, 1) : new Color(1, .30f, .13f)); skin.SetPropertyBlock(block);
             }
-            MakeRacket(); MakeClips(); Present("Ready", 1, Vector3.zero, Vector3.zero, 0, 0);
+            MakeRacket(); ApplyAppearance(null); MakeClips(); Present("Ready", 1, Vector3.zero, Vector3.zero, 0, 0);
+        }
+        public void ApplyAppearance(AvatarAppearance look)
+        {
+            look?.Validate();
+            var block = new MaterialPropertyBlock();
+            foreach (var skin in GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                bool shirt = skin.name.Contains("tshirt");
+                block.Clear();
+                if (look == null)
+                {
+                    if (shirt) block.SetColor("_Color", athlete.name == "Player" || athlete.name == "Partner" ? new Color(.12f, .40f, 1) : new Color(1, .30f, .13f));
+                }
+                else if (shirt)
+                {
+                    block.SetColor("_Color", AvatarAppearance.Palette[look.jerseyColorId]);
+                    block.SetFloat("_Flat", look.jerseyStyleId == 0 ? 1 : 0);
+                    if (look.jerseyStyleId != 0)
+                        block.SetTexture("_MainTex", Resources.Load<Texture2D>(look.jerseyStyleId == 1 ? "CareerJersey/shoulder" : "CareerJersey/side"));
+                }
+                else if (skin.name.Contains("pants")) block.SetColor("_Color", AvatarAppearance.Dark[look.pantsId]);
+                else if (skin.name.Contains("shoe")) block.SetColor("_Color", AvatarAppearance.Palette[look.shoeColorId]);
+                else if (skin.name.Contains("haircut")) block.SetColor("_Color", AvatarAppearance.Dark[look.hairColorId]);
+                skin.SetPropertyBlock(block.isEmpty ? null : block);
+            }
+            foreach (var line in Grip.GetComponentsInChildren<LineRenderer>())
+                line.startColor = line.endColor = line.name == "Grip" ? (look == null ? new Color(.11f, .14f, .17f) : AvatarAppearance.Dark[look.gripColorId])
+                    : line.name == "String" ? (look == null ? Color.white : AvatarAppearance.Palette[look.stringColorId])
+                    : look == null ? (line.name == "Frame" ? new Color(.85f, .92f, .93f) : Color.white) : AvatarAppearance.Palette[look.racketColorId];
         }
         void Segment(string name, Vector3 a, Vector3 b, float width, Color color, Transform parent)
         {
