@@ -217,10 +217,9 @@ namespace JustSmash
             string label = shot == "Clear" ? "lob" : shot.ToLowerInvariant();
             if (p.y < (high ? 1.45f : .25f)) return "Kok terlalu rendah untuk " + label;
             if (p.y > (high ? 2.8f : 1.9f)) return "Kok terlalu tinggi untuk " + label;
-            float shoulderX = p.x < -.1f ? Mathf.Lerp(.183f, -.06f, Mathf.Clamp01((-p.x - .1f) / .45f))
-                : Mathf.Lerp(.183f, .22f, Mathf.Clamp01((p.x - .183f) / .55f));
-            float shoulderY = high ? 1.46f : Mathf.Lerp(1.22f, 1.34f, Mathf.Clamp01((p.y - .30f) / .55f));
-            float shoulderZ = p.z < 0 ? Mathf.Lerp(-.018f, -.12f, Mathf.Clamp01(-p.z / .45f)) : -.018f;
+            float shoulderX = p.x < -.1f ? Mathf.Lerp(.183f, -.05f, Mathf.Clamp01((-p.x - .1f) / .45f)) : .183f;
+            float shoulderY = high ? 1.46f : 1.34f;
+            float shoulderZ = p.z < 0 ? Mathf.Lerp(-.018f, -.05f, Mathf.Clamp01(-p.z / .45f)) : -.018f;
             Vector3 shoulder = athlete.TransformPoint(new Vector3(shoulderX, shoulderY, shoulderZ));
             return Vector3.Distance(point, shoulder) < armLength + RacketLength - .012f ? "" : "Di luar jangkauan";
         }

@@ -1463,7 +1463,7 @@ public class MobileMatchTests : PreferenceFixture
             ("back-center-high", "Clear", new Vector3(.20f, 2.05f, -.50f), true, "OK"),
             ("back-left-high", "Clear", new Vector3(-.55f, 2.05f, -.50f), true, "OK"),
             ("back-center-low", "Lift", new Vector3(.20f, 1.20f, -.55f), true, "OK"),
-            ("back-low-crouch-042", "Lift", new Vector3(-.20f, .42f, -.20f), true, "OK"),
+            ("back-low-crouch-048", "Lift", new Vector3(-.20f, .48f, -.20f), true, "OK"),
             ("back-far-out", "Clear", new Vector3(0f, 2.05f, -1.35f), false, "Di luar jangkauan"),
             ("floor-too-low", "Lift", new Vector3(.20f, .04f, .20f), false, "Kok terlalu rendah"),
             ("height-gap-clear-140", "Clear", new Vector3(.30f, 1.40f, .35f), false, "Kok terlalu rendah"),
