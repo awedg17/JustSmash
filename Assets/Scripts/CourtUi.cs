@@ -460,6 +460,16 @@ namespace JustSmash
                     + (pointReview == PointReview.Overturned ? " (dikoreksi)" : pointReview == PointReview.Confirmed ? " (tetap)" : "") + "\n" + cause;
             }
         }
+        string HudNotice
+        {
+            get
+            {
+                if (MatchState == "Point" || MatchState == "MatchEnd") return PointNotice;
+                if (MatchState == "Serving") return HumanServe ? "Giliran servis kamu" : Match.Server == 0 ? "Servis Dimas" : "Servis lawan";
+                const string miss = "Poor | miss: ";
+                return (Match == null || MatchState == "Rally") && feedback.StartsWith(miss, StringComparison.Ordinal) ? feedback.Substring(miss.Length) : "";
+            }
+        }
         string HudScoreHeader => Match == null ? "LATIHAN" : "GAME " + Match.GameNumber + " / " + ActionLabel(Difficulty);
         Rect HudNoticeRect => new Rect(24, 230, 350, 64);
         Rect FlowPanelRect => new Rect(24, 230, 350, 222);
@@ -510,9 +520,8 @@ namespace JustSmash
                 GUI.Label(new Rect(40, 244, 318, 32), flowStage == "Warmup" ? MatchTitle : EventName, smallStyle);
                 GUI.Label(new Rect(40, 284, 318, 76), flowStage == "Warmup" ? TeamName(0) + "\nvs " + TeamName(1) : flowStage == "Ready" ? "Siap servis" : flowStage == "GameEnd" ? "Game selesai" : flowStage == "Interval" ? "Istirahat" : "Ganti sisi lapangan", bodyStyle);
             }
-            else if (MatchState == "Point" || MatchState == "Serving") GUI.Label(HudNoticeRect, MatchState == "Serving" ? (HumanServe ? "Giliran servis kamu" : Match.Server == 0 ? "Servis Dimas" : "Servis lawan") : PointNotice, smallStyle);
+            else GUI.Label(HudNoticeRect, HudNotice, smallStyle);
             if (replaying) return;
-            if (feedback.StartsWith("Terlalu", StringComparison.Ordinal)) GUI.Label(HudNoticeRect, feedback, smallStyle);
             bool serve = Match != null && MatchState == "Serving" && HumanServe && flowStage == null;
             if (serve) DrawControl(ServeRect, servingCharge ? "SERVIS " + ServePower.ToString("P0") : "SERVIS PENDEK", true, servingCharge);
             else if (flowStage == null && (Match == null || MatchState == "Rally"))

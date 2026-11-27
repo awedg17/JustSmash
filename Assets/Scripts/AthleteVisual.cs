@@ -155,13 +155,16 @@ namespace JustSmash
             a.rotation = Quaternion.FromToRotation(b.position - a.position, joint - a.position) * a.rotation;
             b.rotation = Quaternion.FromToRotation(tip.position - b.position, target - b.position) * b.rotation;
         }
-        public bool CanReach(Vector3 point, string shot)
+        public bool CanReach(Vector3 point, string shot) => ReachFailure(point, shot).Length == 0;
+        public string ReachFailure(Vector3 point, string shot)
         {
             Vector3 p = athlete.InverseTransformPoint(point);
             bool high = shot == "Smash" || shot == "Clear" || shot == "Drop";
-            if (p.y < (high ? 1.45f : .25f) || p.y > (high ? 2.8f : 1.9f)) return false;
+            string label = shot == "Clear" ? "lob" : shot.ToLowerInvariant();
+            if (p.y < (high ? 1.45f : .25f)) return "Kok terlalu rendah untuk " + label;
+            if (p.y > (high ? 2.8f : 1.9f)) return "Kok terlalu tinggi untuk " + label;
             Vector3 shoulder = athlete.TransformPoint(new Vector3(.183f, high ? 1.46f : 1.34f, -.018f));
-            return Vector3.Distance(point, shoulder) < armLength + RacketLength - .012f;
+            return Vector3.Distance(point, shoulder) < armLength + RacketLength - .012f ? "" : "Di luar jangkauan";
         }
         public void Present(string stroke, float elapsed, Vector3 contact, Vector3 displacement, float jumpHeight, float landing)
         {

@@ -620,11 +620,11 @@ namespace JustSmash
             if (Match != null && (MatchState != "Rally" || lastHitter == 0 || !CanReceive(0))) return false;
             var local = shuttle.position - player.position;
             bool overhead = stroke == "Smash" || stroke == "Clear" || stroke == "Drop";
-            float minY = overhead ? 1.45f : .25f, maxY = overhead ? 2.8f : 1.9f;
             float reach = new Vector2(local.x, local.z).magnitude;
-            if (!flying || !playerVisual.CanReach(shuttle.position, stroke))
+            string failure = playerVisual.ReachFailure(shuttle.position, stroke);
+            if (!flying || failure.Length != 0)
             {
-                feedback = "Poor | miss: " + (!flying ? "shuttle inactive" : reach > 1.15f ? "outside reach" : "contact height");
+                feedback = "Poor | miss: " + (!flying ? "Kok tidak aktif" : failure);
                 BootDiagnostics.Log("hit", feedback + " reach=" + reach.ToString("F2") + " height=" + local.y.ToString("F2")); return false;
             }
 
@@ -671,8 +671,8 @@ namespace JustSmash
             if (!shotIntent.Pending) return;
             if (Time.time > shotIntent.ExpiresAt)
             {
-                var local = player.InverseTransformPoint(shuttle.position);
-                feedback = new Vector2(local.x, local.z).magnitude > 1.15f ? "Terlalu jauh" : local.y < 1.45f ? "Terlalu rendah" : "Terlalu tinggi";
+                string failure = playerVisual.ReachFailure(shuttle.position, shots[shotIntent.Kind]);
+                feedback = "Poor | miss: " + (failure.Length == 0 ? "Kontak tidak terjadi" : failure);
                 shotIntent.Clear(); return;
             }
             if (!shotIntent.TryTake(Time.time, ShotReachable, out int kind)) return;
