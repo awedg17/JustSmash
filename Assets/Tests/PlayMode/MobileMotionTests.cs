@@ -214,6 +214,32 @@ public class MobileMotionTests : PreferenceFixture
             Assert.That(Vector3.Distance(wrist,freeHand.position),Is.LessThan(.01f),shot+" free arm snaps at recovery end");
         }
     }
+    [UnityTest] public IEnumerator ReadyFreeArmBendsDownWithWristInFrontOfHipAtBothEnds()
+    {
+        LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");
+        yield return SceneManager.LoadSceneAsync("Boot"); yield return null;
+        var root = GameObject.Find("Player").transform;
+        var model = root.Find("AthleteVisual");
+        var driver = model.GetComponents<MonoBehaviour>().Single(t => t.GetType().Name == "AthleteVisual");
+        var present = driver.GetType().GetMethod("Present");
+        var arm = model.Find(Chest + "/LeftShoulder/LeftArm");
+        var elbow = arm.Find("LeftForeArm");
+        var wrist = elbow.Find("LeftHand");
+        foreach (float yaw in new[] { 0f, 180f })
+        {
+            root.rotation = Quaternion.Euler(0, yaw, 0);
+            foreach (var step in new[] { Vector3.zero, root.forward * .12f, root.right * .12f })
+            {
+                present.Invoke(driver, new object[] { "Ready", 1f, root.position, step, 0f, 0f });
+                Vector3 localElbow = root.InverseTransformPoint(elbow.position);
+                Vector3 localShoulder = root.InverseTransformPoint(arm.position);
+                Vector3 localWrist = root.InverseTransformPoint(wrist.position);
+                Assert.That(localWrist.z, Is.GreaterThan(.28f), "Wrist sits at the hip instead of out in front");
+                Assert.That(localElbow.y, Is.LessThan(localShoulder.y - .12f), "Elbow must hang below the shoulder");
+                Assert.That(localElbow.x, Is.GreaterThan(localShoulder.x - .15f), "Elbow flares out into an akimbo silhouette");
+            }
+        }
+    }
     [UnityTest] public IEnumerator AirborneImmediateContactKeepsFreeHandContinuous()
     {
         LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");

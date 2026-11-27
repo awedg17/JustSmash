@@ -48,7 +48,7 @@ namespace JustSmash
             }
             if (f.pJump > .7f || f.pLand > 1) throw new ArgumentException("Invalid replay jump");
         }
-        void ValidateMobileSnapshot(Snapshot s)
+        static void ValidateMobileSnapshot(Snapshot s)
         {
             if (s.version == 1) return;
             OpponentProfile.For(s.difficulty);

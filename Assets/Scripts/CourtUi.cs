@@ -5,10 +5,10 @@ namespace JustSmash
 {
     public sealed partial class CourtPrototype
     {
-        enum GameScreen { Home, Setup, Playing, Training, Pause, Settings, Credits, Confirm }
+        enum GameScreen { Home, Setup, Playing, Training, Pause, Settings, Credits, Confirm, CareerSlots, CareerCreate, CareerCalendar, CareerArchive, CareerAppearance }
         GameScreen screen, settingsReturn, confirmReturn;
         string confirmAction, menuAction, menuNotice;
-        string MenuNotice => screen == GameScreen.Pause || screen == GameScreen.Settings ? menuNotice ?? "" : "";
+        string MenuNotice => screen == GameScreen.Pause || screen == GameScreen.Settings || CareerMenu || careerMatchId != null ? menuNotice ?? "" : "";
         int menuFinger = -1;
         Vector2 menuPoint, settingsScroll;
         GUIStyle bodyStyle, titleStyle, buttonStyle, smallStyle, scoreStyle, sliderStyle, sliderThumbStyle;
@@ -17,23 +17,28 @@ namespace JustSmash
         readonly Color inkColor = new Color(.027f, .098f, .243f), skyColor = new Color(.46f, .745f, 1);
         public string ScreenName => screen.ToString();
         public string Difficulty { get; private set; } = "Normal";
-        public string EventName => "JUST SMASH OPEN";
+        public string EventName => careerEvent?.ToUpperInvariant() ?? "JUST SMASH OPEN";
         public string MatchTitle => DoublesMode ? "GANDA PUTRA" : "TUNGGAL PUTRA";
-        public string OpponentName => Difficulty == "Hard" ? "Raka Pradana" : Difficulty == "Easy" ? "Bima Santosa" : "Arga Wijaya";
-        string TeamName(int side) => side == 0 ? (DoublesMode ? "Kamu + Dimas" : "Kamu") : DoublesMode ? OpponentName.Split(' ')[0] + " + Fajar" : OpponentName;
+        public string OpponentName => careerOpponent ?? (Difficulty == "Hard" ? "Raka Pradana" : Difficulty == "Easy" ? "Bima Santosa" : "Arga Wijaya");
+        string TeamName(int side) => side == 0 ? (careerMatchId != null ? ActiveCareer.Name : DoublesMode ? "Kamu + Dimas" : "Kamu") : DoublesMode ? OpponentName.Split(' ')[0] + " + Fajar" : OpponentName;
         Rect SetupTeamRect(int side) => new Rect(52, 330 + side * 48, 350, 36);
         float UiHeight => Screen.safeArea.height / Mathf.Max(.01f, uiScale);
-        bool GameplayInputEnabled => (screen == GameScreen.Playing || screen == GameScreen.Training) && Time.timeScale > 0 && !testerOpen;
+        bool GameplayInputEnabled => (screen == GameScreen.Playing || screen == GameScreen.Training) && Time.timeScale > 0 && !testerOpen && !replaying;
+        string CareerPauseAction => reviewAvailable ? "Selesaikan challenge" : finalPointPending || replaying ? null :
+            Match.Winner >= 0 && !careerResultSaved ? "Ulang simpan" : "Ke kalender";
         string[] UiActions => screen switch
         {
-            GameScreen.Home => new[] { "Main", "Latihan", "Pengaturan", "Kredit" },
+            GameScreen.Home => new[] { "Main", "Latihan", "Pengaturan", "Kredit", "Karier" },
+            GameScreen.CareerSlots or GameScreen.CareerCreate or GameScreen.CareerCalendar or GameScreen.CareerArchive or GameScreen.CareerAppearance => CareerActions(),
             GameScreen.Setup => new[] { "Easy", "Normal", "Hard", "Mulai", "Kembali", "Tunggal", "Ganda" },
-            GameScreen.Pause => new[] { "Lanjut", "Pengaturan", "Simpan", "Muat", "Ulangi", "Menu" },
+            GameScreen.Pause => careerMatchId == null ? new[] { "Lanjut", "Pengaturan", "Simpan", "Muat", "Ulangi", "Menu" } :
+                CareerPauseAction is string action ? new[] { "Lanjut", "Pengaturan", "Simpan", action } : new[] { "Lanjut", "Pengaturan", "Simpan" },
             GameScreen.Settings => new[] { "Bantuan", "Joystick", "ReplayMode", "TrailColor", "ShadowColor", "FrameRate", "Kembali" },
             GameScreen.Credits => new[] { "Kembali" },
             GameScreen.Confirm => new[] { "Ya", "Tidak" },
-            _ => Match != null && Match.Winner >= 0 ? new[] { "Main lagi", "Menu" }
-                : replaying ? new[] { "Lewati" } : new[] { "Pause", "Teruskan", "Challenge", "Umpan lob", "Umpan net" }
+            _ => replaying ? new[] { "Lewati" } : ShowMatchResult ? (careerMatchId == null ? new[] { "Main lagi", "Menu" }
+                : new[] { careerResultSaved ? "Ke kalender" : "Ulang simpan" })
+                : new[] { "Pause", "Teruskan", "Challenge", "Umpan lob", "Umpan net" }
         };
         static Rect ControlRect(int index, Vector2 size)
         {
@@ -126,6 +131,9 @@ namespace JustSmash
             float w = UiWidth, h = UiHeight;
             int index = Array.IndexOf(UiActions, action);
             if (index < 0) return Rect.zero;
+            if (screen == GameScreen.CareerAppearance && action != "Kembali") return new Rect(48 + index / 5 * 326, 166 + index % 5 * 84, 306, 68);
+            if (CareerMenu) return screen == GameScreen.CareerArchive || action == "Kembali" ? new Rect(w - 216, 28, 176, 64) : new Rect(48 + index / 5 * 452, 212 + index % 5 * 78, 420, 64);
+            if (screen == GameScreen.Home && action == "Karier") return new Rect(w - 230, h - 104, 188, 64);
             if (screen == GameScreen.Home) return action == "Main" ? new Rect(46, 428, 354, 100)
                 : action == "Latihan" ? new Rect(50, 548, 324, 70)
                 : action == "Pengaturan" ? new Rect(48, 632, 212, 64) : new Rect(280, 632, 128, 64);
@@ -140,7 +148,7 @@ namespace JustSmash
             if (screen == GameScreen.Credits) return new Rect(w - 212, 28, 172, 64);
             if (screen == GameScreen.Pause) return new Rect(w / 2 - 180, 132 + index * 76, 360, 64);
             if (screen == GameScreen.Confirm) return new Rect(w / 2 - 180 + index * 192, h / 2 + 34, 168, 64);
-            if (Match != null && Match.Winner >= 0) return index == 0 ? new Rect(44, 550, 354, 76) : new Rect(48, 638, 200, 64);
+            if (ShowMatchResult) return index == 0 ? new Rect(44, 550, 354, 76) : new Rect(48, 638, 200, 64);
             if (action == "Pause") return new Rect(w - 120, 24, 96, 64);
             if (action == "Lewati") return new Rect(w - 224, 24, 200, 64);
             if (action == "Teruskan") return flowStage != null ? new Rect(40, 372, 318, 64) : Rect.zero;
@@ -173,9 +181,14 @@ namespace JustSmash
         }
         void ActOnUi(string action)
         {
+            if (CareerMenu) { ActOnCareer(action); return; }
             switch (action)
             {
                 case "Main": OpenUi(GameScreen.Setup); break;
+                case "Karier": OpenCareerSlots(); break;
+                case "Ke kalender": LeaveCareerMatch(); break;
+                case "Selesaikan challenge": EnterGameScreen(false); break;
+                case "Ulang simpan": RecordCareerResult(); break;
                 case "Tunggal": ConfigureDiscipline(false); break;
                 case "Ganda": ConfigureDiscipline(true); break;
                 case "Easy": case "Normal": case "Hard": Difficulty = action; break;
@@ -214,6 +227,7 @@ namespace JustSmash
         }
         void HandleBack()
         {
+            if (CareerMenu) { ActOnCareer("Kembali"); return; }
             switch (screen)
             {
                 case GameScreen.Playing: case GameScreen.Training: OpenUi(GameScreen.Pause); break;
@@ -254,6 +268,7 @@ namespace JustSmash
         void StageMenu()
         {
             if (screen != GameScreen.Home && screen != GameScreen.Setup) return;
+            playerVisual.ApplyAppearance(null);
             ResetAthleteMovement();
             void Pose(int id, Vector3 position, float yaw)
             {
@@ -370,7 +385,7 @@ namespace JustSmash
                 var style = new GUIStyle(smallStyle) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
                 style.normal.textColor = pressed ? accentColor : textColor; GUI.Label(rect, ActionLabel(action).ToUpperInvariant(), style); return;
             }
-            DrawControl(rect, ActionLabel(action).ToUpperInvariant(), selected || primary, pressed, action == "Main" ? 50 : action == "Mulai" ? 40 : screen == GameScreen.Settings ? 24 : 28);
+            DrawControl(rect, (CareerMenu ? CareerLabel(action) : ActionLabel(action)).ToUpperInvariant(), selected || primary, pressed, action == "Main" ? 50 : action == "Mulai" ? 40 : screen == GameScreen.CareerAppearance ? 18 : screen == GameScreen.Settings ? 24 : 28);
             if (selected) FillUi(new Rect(rect.x + 24, rect.yMax - 9, rect.width - 48, 3), inkColor);
         }
         void OnGUI()
@@ -382,7 +397,7 @@ namespace JustSmash
             bool playing = screen == GameScreen.Playing || screen == GameScreen.Training;
             if (!playing)
             {
-                if (screen != GameScreen.Home && screen != GameScreen.Setup) FillUi(new Rect(0, 0, w, h), new Color(.027f, .098f, .243f, .62f));
+                if (screen != GameScreen.Home && screen != GameScreen.Setup) FillUi(new Rect(0, 0, w, h), new Color(.027f, .098f, .243f, screen == GameScreen.CareerAppearance ? .18f : .62f));
                 if (screen == GameScreen.Home || screen == GameScreen.Setup)
                 {
                     MenuSweep(h);
@@ -403,6 +418,7 @@ namespace JustSmash
                     var venue = new GUIStyle(smallStyle) { alignment = TextAnchor.UpperRight };
                     if (screen == GameScreen.Home) GUI.Label(new Rect(w - 620, 30, 580, 36), "GELANGGANG JUST SMASH", venue);
                 }
+                else if (CareerMenu) DrawCareer(w, h);
                 else if (screen == GameScreen.Pause) { PanelUi(new Rect(w / 2 - 212, 40, 424, 604)); GUI.Label(new Rect(w / 2 - 180, 54, 360, 64), "JEDA", titleStyle); }
                 else if (screen == GameScreen.Settings) { PanelUi(new Rect(24, 24, w - 48, h - 48)); GUI.Label(new Rect(44, 44, 450, 64), "Pengaturan", titleStyle); DrawSettings(); }
                 else if (screen == GameScreen.Credits)
@@ -460,6 +476,16 @@ namespace JustSmash
                     + (pointReview == PointReview.Overturned ? " (dikoreksi)" : pointReview == PointReview.Confirmed ? " (tetap)" : "") + "\n" + cause;
             }
         }
+        string HudNotice
+        {
+            get
+            {
+                if (MatchState == "Point" || MatchState == "MatchEnd") return PointNotice;
+                if (MatchState == "Serving") return HumanServe ? "Giliran servis kamu" : Match.Server == 0 ? "Servis Dimas" : "Servis lawan";
+                const string miss = "Poor | miss: ";
+                return (Match == null || MatchState == "Rally") && feedback.StartsWith(miss, StringComparison.Ordinal) ? feedback.Substring(miss.Length) : "";
+            }
+        }
         string HudScoreHeader => Match == null ? "LATIHAN" : "GAME " + Match.GameNumber + " / " + ActionLabel(Difficulty);
         Rect HudNoticeRect => new Rect(24, 230, 350, 64);
         Rect FlowPanelRect => new Rect(24, 230, 350, 222);
@@ -473,7 +499,7 @@ namespace JustSmash
         public bool ShotPressed(int index) => pressedShot == index && shotFinger != -1;
         void DrawGameHud(float w, float h)
         {
-            if (Match != null && Match.Winner >= 0)
+            if (ShowMatchResult)
             {
                 MenuSweep(h);
                 GUI.Label(new Rect(48, 27, 400, 34), EventName, smallStyle);
@@ -510,9 +536,8 @@ namespace JustSmash
                 GUI.Label(new Rect(40, 244, 318, 32), flowStage == "Warmup" ? MatchTitle : EventName, smallStyle);
                 GUI.Label(new Rect(40, 284, 318, 76), flowStage == "Warmup" ? TeamName(0) + "\nvs " + TeamName(1) : flowStage == "Ready" ? "Siap servis" : flowStage == "GameEnd" ? "Game selesai" : flowStage == "Interval" ? "Istirahat" : "Ganti sisi lapangan", bodyStyle);
             }
-            else if (MatchState == "Point" || MatchState == "Serving") GUI.Label(HudNoticeRect, MatchState == "Serving" ? (HumanServe ? "Giliran servis kamu" : Match.Server == 0 ? "Servis Dimas" : "Servis lawan") : PointNotice, smallStyle);
+            else GUI.Label(HudNoticeRect, HudNotice, smallStyle);
             if (replaying) return;
-            if (feedback.StartsWith("Terlalu", StringComparison.Ordinal)) GUI.Label(HudNoticeRect, feedback, smallStyle);
             bool serve = Match != null && MatchState == "Serving" && HumanServe && flowStage == null;
             if (serve) DrawControl(ServeRect, servingCharge ? "SERVIS " + ServePower.ToString("P0") : "SERVIS PENDEK", true, servingCharge);
             else if (flowStage == null && (Match == null || MatchState == "Rally"))

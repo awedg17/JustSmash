@@ -1,4 +1,12 @@
 
+## Polish sebelum rilis — 2026-11-25
+
+Kontak memakai satu keputusan tinggi/jangkauan `AthleteVisual.ReachFailure`, juga dipakai `CanReach`, release dan buffer. HUD satu slot dengan hasil poin mengalahkan feedback rally. Patch siku/crowd diterapkan tanpa mengubah badan/kaki, kok, Official15, stamina atau timing kontak.
+
+`green-contact-visual`: 29/29 Unity PASS, sourceDelta=[], dataChanged=false. `green-smash-fixture2`: 6/6 PASS, enam fixture/cermin z cocok .68/tanpa solusi/.66; fallback exact terhadap power aktual. Run kandidat awal 6/7 karena pembanding fixture menganggap charge-clock float tepat .5; koreksi pembanding saja, laporan gagal dipertahankan. Source aktif dikembalikan hash-identik dengan kontak/visual; kandidat+tes khusus hanya `02-smash-candidate-held.patch`, belum build/push. Reconstruction patch dari HEAD diuji exact.
+
+Tiga klip controlled PC before/after 1x dengan game PCM/AAC, tanpa retime/padding: kontak24.042s, smash29.077333s, visual9.727333s. Full decode/strictPTS-DTS/faststart PASS. Browser full muted1x ended/error-null, dropped5/14/0 saat paralel; bukan audible/motion acceptance. Source smash kandidat PCM-video gap132ms, baseline81.67–118.67ms; historical gate FAIL dipertahankan. Tidak mengejar sync sebagai blocker produk D-064. Detail dan jalur bukti: [[Release-Polish]], `evidence/release-polish/deliverables/`. Tidak ada APK/full-suite/device/owner acceptance.
+
 ## D-063 — replay capture boundary verified (2026-11-23 19:55)
 
 Test-only MobileMatchTests capture now starts game PCM at actual first recorded frame and stops after actual final frame,not before ffmpeg launch/after unrelated frame delay. Runtime audio unchanged. wave4-replay-av-boundary1:1/1UnityPASS,12controlled scenarios,1683frames56.031s;PCM56.0426667s,AVduration11.67ms vs87.67ms prior. Strict live34.52ms,packet16.24ms,decode/count/PTS/DTS PASS. No trim/retime/padding. Source/protected unchanged during run;only MobileMatchTests differs since26focused current-runtime checks.

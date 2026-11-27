@@ -29,6 +29,8 @@ Mulai dari sini tiap sesi. Urutan baca: halaman ini → [[SESSION_HANDOFF]] (che
 
 ## Status aktif
 
+- Polish sebelum rilis: alasan kontak/HUD dan patch siku/crowd terpasang, 29/29 focused Unity PASS. Kandidat smash enam fixture kedua ujung cocok .68/tanpa solusi/.66, diekspor terpisah lalu dikeluarkan dari source aktif; belum build/push. Tiga klip before/after 1x berisi audio game tersedia, AV drift capture tetap dilaporkan. [[Release-Polish]] memuat hasil dan batas penerimaan.
+
 - T4e foot-state216cases max.370000362m→0;48invalid+56replaychecksPASS. Actual render boundary now proves foot pose restored:24,164pixels→0. Snapshot1500frames failed old1Mlimit;bounded8Mguard26testsPASS. Previous full20Edit+248/250Play,two knownlunge;predates guard. Replay recorder boundary fixed:87.67→11.67ms AVgap,12scenarios/1683frames decode+browser1xPASS0drops(muted). Natural-motion/listening still open. See [[SESSION_HANDOFF]].
 
 - Wave4 Net/Lift target subset:64focusedPASS,fullEdit20/20+Play245/247;dua lunge lama tetap gagal. Net travel.37→.127m,Lift rise.18→.52m. `wave4-low-strokes-checkpoint1.json` source-bound. Penghalang closeup terbukti NetTape ketika kamera uji menyeberang net;harness-only fix sedang diverifikasi,geometri/kamera gameplay tetap. Latest naturalAVduration69/60.67msFAIL;belum wholemotion acceptance.

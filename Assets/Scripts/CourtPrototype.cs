@@ -68,14 +68,14 @@ namespace JustSmash
             {
                 if (string.IsNullOrEmpty(beforePoint)) throw new System.InvalidOperationException("Missing pre-point state");
                 Match = JsonUtility.FromJson<SinglesMatch>(beforePoint);
-                Match.AwardPoint(actualIn ? (lastLanding.z * EndSign > 0 ? 0 : 1) : 1 - lastHitter);
-                MatchState = Match.Winner >= 0 ? "MatchEnd" : "Point";
+                ScorePoint(actualIn ? (lastLanding.z * EndSign > 0 ? 0 : 1) : 1 - lastHitter);
             }
             reviewAvailable = false;
             pointCause = actualIn ? PointCause.In : PointCause.Out;
             pointReview = corrected ? PointReview.Overturned : PointReview.Confirmed;
             feedback = "Review: " + (actualIn ? "IN" : "OUT") + (corrected ? " | call overturned | left " : " | call confirmed | left ") + Match.Challenges[0];
-            BeginReplay();
+            if (SetPointPending) FinishPoint();
+            else BeginReplay(); // Line review is not an automatic end-of-set replay.
             return true;
         }
         public float Energy { get; private set; } = 100;
@@ -101,11 +101,13 @@ namespace JustSmash
         {
             if (Match == null) return;
             pointWait = 0;
+            finalPointPending = false;
+            reviewAvailable = false;
             ResetAthleteMovement();
             SpectacularMoment = false;
             landingShadow.gameObject.SetActive(false);
             flying = charging = serviceFlight = false; velocity = Vector3.zero; analog = lastAim = Vector2.zero; shotIntent.Clear();
-            if (Match.Winner >= 0) { MatchState = "MatchEnd"; feedback = Match.Winner == 0 ? "You win" : "Opponent wins"; return; }
+            if (Match.Winner >= 0) { replay.Clear(); MatchState = "MatchEnd"; feedback = Match.Winner == 0 ? "You win" : "Opponent wins"; return; }
             pointCause = PointCause.Unknown; pointReview = PointReview.None;
             PrepareFlow();
             if (Match.GameNumber > energyGame) { Energy = Mathf.Min(EnergyCapacity, Energy + BootDiagnostics.Current.gameRecovery * (EnergyCapacity / 100)); OpponentEnergy = Mathf.Min(EnergyCapacity, OpponentEnergy + BootDiagnostics.Current.gameRecovery * (EnergyCapacity / 100));
@@ -149,7 +151,7 @@ namespace JustSmash
             public ReplayFrame[] frames;
             public Vector3 player, opponent, shuttle, velocity;
             public Vector3[] athleteVelocity;
-            public bool flying, assisted, reviewAvailable, announcedIn, serviceFlight, judgeErrorUsed, spectacular;
+            public bool flying, assisted, reviewAvailable, announcedIn, serviceFlight, judgeErrorUsed, spectacular, finalPointPending;
             public uint judgeState = 37;
             public Vector3 landing;
             public int hitter, energyGame, staminaStat = 70;
@@ -166,9 +168,21 @@ namespace JustSmash
             return JsonUtility.ToJson(new Snapshot { version = 3, athleteVelocity = (Vector3[])athleteVelocity.Clone(), doubles = CaptureDoubles(), difficulty = Difficulty, opponentSeed = opponentSeed, opponentRandom = opponentRandom,
                 opponentEnergy = OpponentEnergy, observationAge = now - observedSwing, reactionRemaining = Mathf.Clamp(opponentThinkAt - now, 0, 1), refreshRemaining = Mathf.Clamp(opponentRefreshAt - now, 0, 1), opponentTarget = opponentTarget,
                 lastAim = lastAim, shotAim = shotAim, intentPending = shotIntent.Pending, intentKind = shotIntent.Kind, intentAim = shotIntent.Aim, intentPower = shotIntent.Power, intentRemaining = Mathf.Clamp(shotIntent.ExpiresAt - now, 0, ShotIntent.Window),
-                simulateLineErrors = SimulateLineErrors, livePose = replaying ? liveFrame : CaptureFrame(), swingElapsed = now - swingAt, pStroke = lastStroke, oStroke = opponentStroke, pointWait = pointWait, match = Match, spectacular = SpectacularMoment, judgeErrorUsed = judgeErrorUsed, judgeState = judgeState, state = MatchState, flowStage = flowStage, flowGame = flowGame, beforePoint = beforePoint, pointCause = pointCause, pointReview = pointReview, frames = replay.ToArray(), reviewAvailable = reviewAvailable, announcedIn = announcedIn, serviceFlight = serviceFlight, landing = lastLanding, player = frame.player, opponent = frame.opponent, shuttle = frame.shuttle, velocity = velocity, flying = flying, assisted = assisted, hitter = lastHitter, energyGame = energyGame, staminaStat = StaminaStat, energy = Energy, jumpElapsed = jumpPhase, jumpHeight = jumpY, chargeElapsed = now - chargedAt, aiElapsed = now - aiContactAt, serveRemaining = Mathf.Clamp(serveReadyAt - now, 0, 1), analog = analog, charging = charging, stroke = stroke });
+                simulateLineErrors = SimulateLineErrors, livePose = replaying ? liveFrame : CaptureFrame(), swingElapsed = now - swingAt, pStroke = lastStroke, oStroke = opponentStroke, pointWait = pointWait, finalPointPending = finalPointPending, match = Match, spectacular = SpectacularMoment, judgeErrorUsed = judgeErrorUsed, judgeState = judgeState, state = MatchState, flowStage = flowStage, flowGame = flowGame, beforePoint = beforePoint, pointCause = pointCause, pointReview = pointReview, frames = replay.ToArray(), reviewAvailable = reviewAvailable, announcedIn = announcedIn, serviceFlight = serviceFlight, landing = lastLanding, player = frame.player, opponent = frame.opponent, shuttle = frame.shuttle, velocity = velocity, flying = flying, assisted = assisted, hitter = lastHitter, energyGame = energyGame, staminaStat = StaminaStat, energy = Energy, jumpElapsed = jumpPhase, jumpHeight = jumpY, chargeElapsed = now - chargedAt, aiElapsed = now - aiContactAt, serveRemaining = Mathf.Clamp(serveReadyAt - now, 0, 1), analog = analog, charging = charging, stroke = stroke });
         }
         public void RestoreMatch(string json)
+        {
+            var s = ReadSnapshot(json);
+            ApplySnapshot(s);
+        }
+        internal static string CareerSnapshotResult(string json)
+        {
+            var s = ReadSnapshot(json);
+            if (s.version != 3 || s.match.Doubles || s.difficulty != "Normal")
+                throw new System.ArgumentException("Snapshot karier bukan laga Tunggal Normal");
+            return s.match.Winner >= 0 && !s.finalPointPending && !s.reviewAvailable ? EncodeResult(s.match) : null;
+        }
+        static Snapshot ReadSnapshot(string json)
         {
             // ponytail: bounded JSON for the existing 1500-frame/four-athlete replay; larger histories need a compact format.
             if (string.IsNullOrEmpty(json) || json.Length > 8000000) throw new System.ArgumentException("Invalid snapshot size");
@@ -208,6 +222,7 @@ namespace JustSmash
             if (!string.IsNullOrEmpty(s.flowStage) && s.flowStage != "Warmup" && s.flowStage != "Ready" && s.flowStage != "GameEnd" && s.flowStage != "Interval" && s.flowStage != "ChangeEnds") throw new System.ArgumentException("Invalid flow stage");
             if (s.flowGame < 0 || s.flowGame > s.match.GameNumber) throw new System.ArgumentException("Invalid flow game");
             if (!float.IsFinite(s.pointWait) || s.pointWait < 0 || s.pointWait > 3) throw new System.ArgumentException("Invalid point timer");
+            if (s.finalPointPending && !ended) throw new System.ArgumentException("Invalid pending match result");
             if (s.reviewAvailable && string.IsNullOrEmpty(s.beforePoint)) throw new System.ArgumentException("Missing review history");
             if (!string.IsNullOrEmpty(s.beforePoint))
             {
@@ -254,6 +269,11 @@ namespace JustSmash
                 throw new System.ArgumentException("Invalid athlete velocity");
             ValidateMobileSnapshot(s);
             ValidateDoubles(s);
+            return s;
+        }
+        void ApplySnapshot(Snapshot s)
+        {
+            bool ended = s.match.Winner >= 0;
             SkipReplay(); replay.Clear();
             if (s.frames != null)
             {
@@ -262,6 +282,7 @@ namespace JustSmash
             System.Array.Clear(athleteVelocity, 0, athleteVelocity.Length);
             if (s.athleteVelocity != null) System.Array.Copy(s.athleteVelocity, athleteVelocity, 4);
             pointWait = s.pointWait;
+            finalPointPending = ended && (s.finalPointPending || s.reviewAvailable);
             SpectacularMoment = s.spectacular;
             Match = s.match; flowEnds = Match.EndsSwapped;
             player.rotation = Quaternion.Euler(0, EndSign < 0 ? 180 : 0, 0);
@@ -289,11 +310,18 @@ namespace JustSmash
         public string CaptureResult()
         {
             if (Match == null || Match.Winner < 0) throw new System.InvalidOperationException("Match not finished");
-            return JsonUtility.ToJson(new MatchResult { winner = Match.Winner, games = Match.Games, finalGamePoints = Match.Points, gamePoints = Match.GamePoints });
+            return EncodeResult(Match);
         }
+        static string EncodeResult(SinglesMatch match) => JsonUtility.ToJson(new MatchResult { winner = match.Winner, games = match.Games, finalGamePoints = match.Points, gamePoints = match.GamePoints });
         string SavePath => System.IO.Path.Combine(LocalGameData.Root, "singles-v1.json");
         public void SaveMatch()
         {
+            if (careerMatchId != null)
+            {
+                if (ShowMatchResult) RecordCareerResult();
+                else ChangeCareer(next => next.matchSnapshot = CaptureMatch());
+                return;
+            }
             System.IO.Directory.CreateDirectory(LocalGameData.Root);
             string json = CaptureMatch(), temp = SavePath + ".tmp";
             System.IO.File.WriteAllText(temp, json);
@@ -301,12 +329,16 @@ namespace JustSmash
             else System.IO.File.Move(temp, SavePath);
             feedback = "Match saved"; BootDiagnostics.Log("save", "snapshot saved");
         }
-        public void LoadMatch() { RestoreMatch(System.IO.File.ReadAllText(SavePath)); }
+        public void LoadMatch()
+        {
+            if (careerMatchId != null) throw new System.InvalidOperationException("Muat karier dari slot");
+            RestoreMatch(System.IO.File.ReadAllText(SavePath));
+        }
         void OnApplicationPause(bool paused)
         {
             if (!paused) return; // Resume remains explicit; never advance behind an OS overlay.
             ClearGameplayInput();
-            if (Match != null && Match.Winner < 0) RunMenuAction("Save");
+            if (Match != null && (Match.Winner < 0 || careerMatchId != null && !ShowMatchResult)) RunMenuAction("Save");
             if (screen == GameScreen.Playing || screen == GameScreen.Training) OpenUi(GameScreen.Pause);
             Time.timeScale = 0;
         }
@@ -544,6 +576,7 @@ namespace JustSmash
         }
         public void Feed(string kind)
         {
+            if (careerMatchId != null) return;
             SkipReplay(); replay.Clear();
             EnterTraining();
             shuttle.position = kind == "Net" ? new Vector3(0, 2, 1) : new Vector3(0, 3.4f, 4);
@@ -620,11 +653,11 @@ namespace JustSmash
             if (Match != null && (MatchState != "Rally" || lastHitter == 0 || !CanReceive(0))) return false;
             var local = shuttle.position - player.position;
             bool overhead = stroke == "Smash" || stroke == "Clear" || stroke == "Drop";
-            float minY = overhead ? 1.45f : .25f, maxY = overhead ? 2.8f : 1.9f;
             float reach = new Vector2(local.x, local.z).magnitude;
-            if (!flying || !playerVisual.CanReach(shuttle.position, stroke))
+            string failure = playerVisual.ReachFailure(shuttle.position, stroke);
+            if (!flying || failure.Length != 0)
             {
-                feedback = "Poor | miss: " + (!flying ? "shuttle inactive" : reach > 1.15f ? "outside reach" : "contact height");
+                feedback = "Poor | miss: " + (!flying ? "Kok tidak aktif" : failure);
                 BootDiagnostics.Log("hit", feedback + " reach=" + reach.ToString("F2") + " height=" + local.y.ToString("F2")); return false;
             }
 
@@ -671,8 +704,8 @@ namespace JustSmash
             if (!shotIntent.Pending) return;
             if (Time.time > shotIntent.ExpiresAt)
             {
-                var local = player.InverseTransformPoint(shuttle.position);
-                feedback = new Vector2(local.x, local.z).magnitude > 1.15f ? "Terlalu jauh" : local.y < 1.45f ? "Terlalu rendah" : "Terlalu tinggi";
+                string failure = playerVisual.ReachFailure(shuttle.position, shots[shotIntent.Kind]);
+                feedback = "Poor | miss: " + (failure.Length == 0 ? "Kontak tidak terjadi" : failure);
                 shotIntent.Clear(); return;
             }
             if (!shotIntent.TryTake(Time.time, ShotReachable, out int kind)) return;
@@ -691,11 +724,14 @@ namespace JustSmash
             uiScale = CanvasScale(Screen.safeArea.size);
             if (moveFinger == -1) stickCenter = DefaultStickCenter;
             UpdateArena(); UpdateCourtAudio();
-            if (Input.GetKeyDown(KeyCode.Escape)) HandleBack();
+            if (!replaying && Input.GetKeyDown(KeyCode.Escape)) HandleBack();
+            bool wasReplaying = replaying;
+            ReadInput();
             if (replaying) { ReplayTick(); return; }
-            if (!testerOpen) ReadInput();
+            if (wasReplaying) return;
             if (!GameplayInputEnabled) return;
             ContinuePoint(Time.deltaTime);
+            if (replaying) return;
             UpdateDebug();
             // Root height belongs to fixed simulation; rendering samples its current pose.
             AnimateAthlete();
@@ -707,10 +743,10 @@ namespace JustSmash
                 int winner = Match.Winner >= 0 ? Match.Winner : Match.Server;
                 for (int id = 0; id < (Match.Doubles ? 4 : 2); id++) Visual(id).PresentReaction(id % 2 == winner, weight);
             }
-            if (Match != null && Match.Winner >= 0)
+            if (ShowMatchResult)
             {
-                var winner = Actor(Match.Winner);
-                var centre = winner.position;
+                if (careerMatchId != null && !careerResultSaved && string.IsNullOrEmpty(menuNotice)) RecordCareerResult();
+                var centre = Actor(careerMatchId != null ? 0 : Match.Winner).position;
                 Vector3 span = Vector3.zero;
                 if (Match.Doubles) { span = Actor(Match.Winner + 2).position - centre; centre += span * .5f; }
                 view.fieldOfView = 42;
@@ -764,6 +800,7 @@ namespace JustSmash
             double teamElapsed = Time.timeAsDouble - replayGameAtDouble;
             for (int i = 0; i < 4; i++) { teamThink[i] += teamElapsed; teamRefresh[i] += teamElapsed; }
             replaying = false;
+            if (closingReplay) { closingReplay = false; NextPoint(); }
         }
         void ReplayTick()
         {
@@ -773,7 +810,7 @@ namespace JustSmash
             {
                 view.transform.position = new Vector3(8, 4, 0);
                 view.transform.LookAt(new Vector3(0, 1, 0));
-                if (elapsed >= passDuration)
+                if (elapsed >= passDuration && !closingReplay)
                 {
                     view.transform.SetPositionAndRotation(liveCameraPosition, liveCameraRotation);
                     elapsed -= passDuration;
@@ -858,8 +895,7 @@ namespace JustSmash
             string reason = cause == PointCause.NetTouch ? "net touch" : cause == PointCause.BodyTouch ? "body touch" : "shuttle below net";
             pointCause = cause;
             flying = charging = serviceFlight = reviewAvailable = false;
-            velocity = Vector3.zero; Match.AwardPoint(1 - athlete);
-            MatchState = Match.Winner >= 0 ? "MatchEnd" : "Point";
+            velocity = Vector3.zero; ScorePoint(1 - athlete);
             feedback = "Fault | " + reason;
             BootDiagnostics.Log("scoring", "fault " + reason + " player=" + athlete); PlaySound("whistle");
         }
@@ -953,11 +989,7 @@ namespace JustSmash
                     if (serviceFlight && !legalService) { feedback = "Fault | service area"; reviewAvailable = false; }
                     pointCause = serviceFlight && !legalService ? PointCause.ServiceArea : announcedIn ? PointCause.In : PointCause.Out;
                     serviceFlight = false;
-                    Match.AwardPoint(winner); BootDiagnostics.Log("scoring", "point winner=" + winner); PlaySound("score");
-
-                    MatchState = Match.Winner >= 0 ? "MatchEnd" : "Point";
-                    shuttle.position = after;
-                    if (SpectacularMoment && ReplayMode != 2) BeginReplay();
+                    ScorePoint(winner); BootDiagnostics.Log("scoring", "point winner=" + winner); PlaySound("score");
                 }
             }
             shuttle.position = after;
@@ -970,7 +1002,7 @@ namespace JustSmash
         Rect StickRect => new Rect(stickCenter.x - 95, stickCenter.y - 95, 190, 190);
         Rect JumpRect => ControlRect(6, new Vector2(UiWidth, UiHeight));
         Rect ShotRect(int i) => ControlRect(i + 1, new Vector2(UiWidth, UiHeight));
-        readonly string[] shots = { "Smash", "Clear", "Drop", "Net", "Lift" };
+        static readonly string[] shots = { "Smash", "Clear", "Drop", "Net", "Lift" };
         Rect ServeRect => ControlRect(7, new Vector2(UiWidth, UiHeight));
         void PointerDown(int id, Vector2 point)
         {
@@ -1026,24 +1058,27 @@ namespace JustSmash
         void ReadInput()
         {
             if (testerOpen) return;
+            bool wasReplaying = replaying;
             foreach (var t in Input.touches)
             {
                 var point = (new Vector2(t.position.x, Screen.height - t.position.y) - UiOrigin) / uiScale;
                 if (t.phase == TouchPhase.Began) PointerDown(t.fingerId, point);
                 else if (t.phase == TouchPhase.Canceled) PointerCancel(t.fingerId);
-                else if (t.phase == TouchPhase.Ended) PointerUp(t.fingerId);
+                else if (t.phase == TouchPhase.Ended) { if (t.fingerId == menuFinger) menuPoint = point; PointerUp(t.fingerId); }
                 else PointerMove(t.fingerId, point);
+                if (wasReplaying && !replaying) return;
             }
             if (Input.touchCount == 0)
             {
                 var point = (new Vector2(Input.mousePosition.x, Screen.height - Input.mousePosition.y) - UiOrigin) / uiScale;
                 if (Input.GetMouseButtonDown(0)) PointerDown(-2, point);
                 if (Input.GetMouseButton(0)) PointerMove(-2, point);
-                if (Input.GetMouseButtonUp(0)) PointerUp(-2);
-                if (!GameplayInputEnabled) return;
+                if (Input.GetMouseButtonUp(0)) { PointerMove(-2, point); PointerUp(-2); }
+                if (wasReplaying || !GameplayInputEnabled) return;
                 var keysMove = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
                 if (moveFinger == -1 && (keysMove.sqrMagnitude > 0 || Input.GetKeyUp(KeyCode.W) || Input.GetKeyUp(KeyCode.A) || Input.GetKeyUp(KeyCode.S) || Input.GetKeyUp(KeyCode.D) || Input.GetKeyUp(KeyCode.LeftArrow) || Input.GetKeyUp(KeyCode.RightArrow) || Input.GetKeyUp(KeyCode.UpArrow) || Input.GetKeyUp(KeyCode.DownArrow))) SetAnalog(keysMove);
             }
+            if (!GameplayInputEnabled) return;
             if (Input.GetKeyDown(KeyCode.Space)) Jump();
             if (Input.GetKeyDown(KeyCode.L)) BeginServe();
             if (Input.GetKeyUp(KeyCode.L)) ReleaseServe();
@@ -1069,7 +1104,7 @@ namespace JustSmash
             {
                 switch (action)
                 {
-                    case "Save": SaveMatch(); menuNotice = "Pertandingan disimpan."; break;
+                    case "Save": SaveMatch(); if (careerMatchId == null || !ShowMatchResult || careerResultSaved) menuNotice = "Pertandingan disimpan."; break;
                     case "Load": LoadMatch(); menuNotice = "Pertandingan dimuat."; break;
                     case "Replay": BeginReplay(); break;
                     case "Skip": SkipReplay(); break;
