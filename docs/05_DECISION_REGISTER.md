@@ -1,5 +1,12 @@
 ## D-064 — APPROVED: penyempitan scope oleh pemilik
 
+### Polish terarah sebelum rilis — 2026-11-25
+
+- Pemilik memerintahkan eksekusi feedback kontak berbasis keputusan tinggi/jangkauan yang sama, satu slot notice rally/poin, patch siku dan siluet crowd dari `JustSmash-Visual-Fixes.patch`.
+- Siluet penonton sederhana menggantikan larangan penonton D-062/D-063. Gerak badan/kaki, tampilan kok, Official15 dan aturan stamina dipertahankan.
+- Kandidat smash tunggal mempertahankan aim/target/power; grid 0.40–1.00 s per 0.02 s, vy awal <= 0, crossing >= NetTop(x)+0.08 m, terdekat durasi lama. Tanpa solusi mempertahankan lintasan lama yang bisa gagal. Fixture dan cermin z tercatat di [[Release-Polish]].
+- Kandidat smash hanya diff untuk persetujuan, belum masuk build playtest. Bukti diminta: diff, tes Unity terarah, tiga klip sebelum–sesudah 1x dengan audio game; video pertandingan utuh menyusul. Bukan izin push atau pengujian Android.
+
 - Gerak badan/kaki dipertahankan; pengembangan khusus ganda dihentikan tanpa menghapus mode yang ada. Tampilan kok diterima pemilik.
 - Replay ditetapkan muncul setelah satu set selesai. Ini keputusan produk, belum klaim implementasi; tidak mengasumsikan replay seluruh durasi set. Review/challenge tidak diubah diam-diam.
 - Penyiar ditunda. Sinkronisasi media rekaman tidak lagi dikejar sebagai gate pekerjaan. Pengujian Android dilakukan pemilik nanti.

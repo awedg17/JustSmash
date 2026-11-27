@@ -1,3 +1,10 @@
+## Kontak/pose/crowd release polish — 2026-11-25
+
+- CLOSED_LOCAL_VERIFIED: buffer menebak tinggi minimum overhead 1.45 m untuk semua stroke dan release menebak jarak horizontal. Sekarang alasan berasal dari keputusan stroke-specific yang sama dengan `CanReach`. 24 kombinasi dua ujung dan buffer sukses sebelum expiry/notice priority PASS; kontak sah tetap tick sama, miss tanpa biaya energi/audio. Run focused29/29, sumber/data tetap.
+- Patch siku/crowd lampiran diterapkan: ready wrist di depan, siku turun; enam mesh statis/satu material dengan lifecycle cleanup. Tes pose/motion/arena PASS; Home350s dan still render kedua ujung diperiksa. Kualitas motion/audio masih keputusan pemilik, bukan ditutup oleh tes struktur.
+- Kandidat smash terpisah: grid .40–1.00/.02, vy<=0, margin .08, nearest old duration; enam fixture Unity .68/none/.66 kedua ujung. Tes6/6 setelah pembanding power memakai jam charge aktual; gagal pertama karena float-clock fixture, bukan product rollback. Tanpa kandidat mempertahankan velocity lama persis. Kandidat sudah keluar dari source aktif, hanya patch untuk persetujuan.
+- Capture: PCM/video source drift56–143ms pada beberapa klip, baseline metadata `lastWall:R`. Raw/failed gate dipertahankan; parser tidak mencipta waktu. MP4 berisi audio game, tidak ditrim/retime/pad. Ini keterbatasan rekaman, bukan bug audio game yang terbukti. Detail [[Release-Polish]]. Save File.Replace lama tetap OPEN.
+
 ## D-063 — T4e foot reconstruction + snapshot capacity (2026-11-23 19:38)
 
 Foot history defect CLOSED_LOCAL_VERIFIED for tested routes:216cases (still/stride/air,3strokes,formats/ends/actors,ApplyFrame/RestoreMatch),maxfoot error baseline0.370000362m→0. New optional plant state retains planted/airborne,left/right world targets; replay reconstruct avoids applying plant movement twice and consumes no footfall.48corrupt live/buffer foot values reject before mutation;v2/v3 missing fields accepted. ReplayTick/SkipReplay/load from replay56checksPASS. Whole T4e remains pending natural-motion/pause/accepted-character gates.
