@@ -224,4 +224,96 @@ public class MatchFlowTests : PreferenceFixture
         Assert.That(type.GetProperty("MatchState").GetValue(court), Is.EqualTo("Serving"));
         LogAssert.NoUnexpectedReceived();
     }
+
+    [UnityTest] public IEnumerator NonFinalSetHoldsClosingScoreDuringReviewAndReplayAndUpdatesOnCancelOrBreak()
+    {
+        LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");
+        yield return SceneManager.LoadSceneAsync("Boot"); yield return null;
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("JustSmash.CourtPrototype")).First(t => t != null);
+        var court = UnityEngine.Object.FindFirstObjectByType(type);
+        var displayGame = type.GetProperty("DisplayGameNumber", flags);
+        var displayPoints = type.GetMethod("DisplayPoints", flags);
+        var header = type.GetProperty("HudScoreHeader", flags);
+        var endSign = type.GetProperty("EndSign", flags);
+        int PointsFor(int side) => (int)displayPoints.Invoke(court, new object[] { side });
+
+        // 1. Finish Game 1 at 15-13 -> hold 15-13 during review and closing replay -> Lewati enters Game 2 break 0-0.
+        type.GetMethod("EnterTraining").Invoke(court, null);
+        type.GetMethod("StartMatch").Invoke(court, null);
+        for (int i = 0; i < 3 && (string)type.GetProperty("FlowStage").GetValue(court) != "Serving"; i++) type.GetMethod("AdvanceFlow").Invoke(court, null);
+        type.GetProperty("ReplayMode").SetValue(court, 1);
+        var match = type.GetProperty("Match").GetValue(court);
+        var mt = match.GetType();
+        var replay = (IList)type.GetField("replay", flags).GetValue(court);
+        var frame = type.GetMethod("CaptureFrame", flags).Invoke(court, null);
+        for (int i = 0; i < 10; i++) replay.Add(frame);
+        mt.GetField("Points").SetValue(match, new[] { 14, 13 });
+        type.GetMethod("ScorePoint", flags).Invoke(court, new object[] { 0 });
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(1));
+        Assert.That(PointsFor(0), Is.EqualTo(15));
+        Assert.That(PointsFor(1), Is.EqualTo(13));
+        Assert.That((string)header.GetValue(court), Does.StartWith("GAME 1"));
+        Assert.That((float)endSign.GetValue(court), Is.EqualTo(1f));
+        type.GetMethod("UpdateArena", flags).Invoke(court, null);
+        Assert.That(GameObject.Find("ArenaScoreboard").GetComponentInChildren<TextMesh>().text, Does.Contain("GAME 1").And.Contain("15     13"));
+
+        type.GetMethod("ContinuePoint", flags).Invoke(court, new object[] { 3f });
+        Assert.That(type.GetField("replaying", flags).GetValue(court), Is.True);
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(1));
+        Assert.That(PointsFor(0), Is.EqualTo(15));
+        Assert.That(PointsFor(1), Is.EqualTo(13));
+        var skipRect = (Rect)type.GetMethod("UiActionRect").Invoke(court, new object[] { "Lewati" });
+        type.GetMethod("PointerDown", flags).Invoke(court, new object[] { 31, skipRect.center });
+        type.GetMethod("PointerUp", flags).Invoke(court, new object[] { 31 });
+        Assert.That(type.GetField("replaying", flags).GetValue(court), Is.False);
+        Assert.That(type.GetProperty("FlowStage").GetValue(court), Is.EqualTo("GameEnd"));
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(2));
+        Assert.That(PointsFor(0), Is.EqualTo(0));
+        Assert.That(PointsFor(1), Is.EqualTo(0));
+        Assert.That((float)endSign.GetValue(court), Is.EqualTo(-1f));
+
+        // 2. Replay OFF holds closing score during review window, then transitions immediately at FinishPoint.
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+        for (int i = 0; i < 3 && (string)type.GetProperty("FlowStage").GetValue(court) != "Serving"; i++) type.GetMethod("AdvanceFlow").Invoke(court, null);
+        match = type.GetProperty("Match").GetValue(court);
+        mt.GetField("Points").SetValue(match, new[] { 13, 14 });
+        type.GetMethod("ScorePoint", flags).Invoke(court, new object[] { 1 });
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(2));
+        Assert.That(PointsFor(0), Is.EqualTo(13));
+        Assert.That(PointsFor(1), Is.EqualTo(15));
+        type.GetMethod("ContinuePoint", flags).Invoke(court, new object[] { 3f });
+        Assert.That(type.GetField("replaying", flags).GetValue(court), Is.False);
+        Assert.That(type.GetProperty("FlowStage").GetValue(court), Is.EqualTo("GameEnd"));
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(3));
+        Assert.That(PointsFor(0), Is.EqualTo(0));
+        Assert.That(PointsFor(1), Is.EqualTo(0));
+
+        // 3. Challenge overturning a non-final set point shows corrected score and continues old set.
+        type.GetMethod("StartMatch").Invoke(court, null);
+        type.GetProperty("ReplayMode").SetValue(court, 1);
+        for (int i = 0; i < 3 && (string)type.GetProperty("FlowStage").GetValue(court) != "Serving"; i++) type.GetMethod("AdvanceFlow").Invoke(court, null);
+        match = type.GetProperty("Match").GetValue(court);
+        mt.GetField("Points").SetValue(match, new[] { 13, 14 });
+        type.GetField("beforePoint", flags).SetValue(court, JsonUtility.ToJson(match));
+        type.GetField("lastLanding", flags).SetValue(court, new Vector3(0, .04f, 3f));
+        type.GetField("announcedIn", flags).SetValue(court, false);
+        type.GetField("lastHitter", flags).SetValue(court, 0);
+        type.GetField("reviewAvailable", flags).SetValue(court, true);
+        type.GetMethod("ScorePoint", flags).Invoke(court, new object[] { 1 });
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(1));
+        Assert.That(PointsFor(0), Is.EqualTo(13));
+        Assert.That(PointsFor(1), Is.EqualTo(15));
+        Assert.That(type.GetMethod("ChallengeCall").Invoke(court, null), Is.True);
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(1));
+        Assert.That(PointsFor(0), Is.EqualTo(14));
+        Assert.That(PointsFor(1), Is.EqualTo(14));
+        type.GetMethod("SkipReplay").Invoke(court, null);
+        type.GetMethod("NextPoint").Invoke(court, null);
+        Assert.That(displayGame.GetValue(court), Is.EqualTo(1));
+        Assert.That(PointsFor(0), Is.EqualTo(14));
+        Assert.That(PointsFor(1), Is.EqualTo(14));
+        Assert.That(type.GetProperty("MatchState").GetValue(court), Is.EqualTo("Serving"));
+        LogAssert.NoUnexpectedReceived();
+    }
 }

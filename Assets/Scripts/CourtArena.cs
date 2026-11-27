@@ -344,13 +344,16 @@ namespace JustSmash
         void UpdateArena()
         {
             if (arenaScore == null) return;
-            string key = Match == null ? MatchTitle : Match.GameNumber + ":" + Match.Points[0] + ":" + Match.Points[1] + ":" + Match.Games[0] + ":" + Match.Games[1];
+            int game = Match == null ? 0 : DisplayGameNumber;
+            int p0 = Match == null ? 0 : DisplayPoints(0);
+            int p1 = Match == null ? 0 : DisplayPoints(1);
+            string key = Match == null ? MatchTitle : game + ":" + p0 + ":" + p1 + ":" + Match.Games[0] + ":" + Match.Games[1];
             if (arenaMatch != Match) { arenaMatch = Match; arenaScoreKey = null; officialSignalUntil = 0; }
             if (key != arenaScoreKey)
             {
                 if (arenaScoreKey != null && Match != null) officialSignalUntil = Time.time + (Match.Winner >= 0 ? 5 : 1.5f);
                 arenaScoreKey = key;
-                arenaScore.text = "JUST SMASH\n" + (Match == null ? MatchTitle : "GAME " + Match.GameNumber + "   " + Match.Games[0] + " : " + Match.Games[1]) + "\n" + (Match == null ? "0     0" : Match.Points[0] + "     " + Match.Points[1]);
+                arenaScore.text = "JUST SMASH\n" + (Match == null ? MatchTitle : "GAME " + game + "   " + Match.Games[0] + " : " + Match.Games[1]) + "\n" + (Match == null ? "0     0" : p0 + "     " + p1);
             }
             if (Time.timeScale == 0 || replaying) return;
             float cheer = Mathf.Clamp01((officialSignalUntil - Time.time) * 2);

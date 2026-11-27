@@ -5,11 +5,12 @@ namespace JustSmash
 {
     public sealed partial class CourtPrototype
     {
-        enum GameScreen { Home, Setup, Playing, Training, Pause, Settings, Credits, Confirm, CareerSlots, CareerCreate, CareerCalendar, CareerArchive, CareerAppearance }
+        enum GameScreen { Home, Setup, Playing, Training, Pause, Settings, Credits, Confirm, CareerSlots, CareerCreate, CareerSummary, CareerCalendar, CareerAthlete, CareerArchive, CareerAppearance }
         GameScreen screen, settingsReturn, confirmReturn;
         string confirmAction, menuAction, menuNotice;
         string MenuNotice => screen == GameScreen.Pause || screen == GameScreen.Settings || CareerMenu || careerMatchId != null ? menuNotice ?? "" : "";
         int menuFinger = -1;
+        bool settingsCameraTab, cameraPreviewMode;
         Vector2 menuPoint, settingsScroll;
         GUIStyle bodyStyle, titleStyle, buttonStyle, smallStyle, scoreStyle, sliderStyle, sliderThumbStyle;
         Texture2D slantTexture, sweepTexture, circleTexture;
@@ -29,11 +30,15 @@ namespace JustSmash
         string[] UiActions => screen switch
         {
             GameScreen.Home => new[] { "Main", "Latihan", "Pengaturan", "Kredit", "Karier" },
-            GameScreen.CareerSlots or GameScreen.CareerCreate or GameScreen.CareerCalendar or GameScreen.CareerArchive or GameScreen.CareerAppearance => CareerActions(),
+            GameScreen.CareerSlots or GameScreen.CareerCreate or GameScreen.CareerSummary or GameScreen.CareerCalendar or GameScreen.CareerAthlete or GameScreen.CareerArchive or GameScreen.CareerAppearance => CareerActions(),
             GameScreen.Setup => new[] { "Easy", "Normal", "Hard", "Mulai", "Kembali", "Tunggal", "Ganda" },
             GameScreen.Pause => careerMatchId == null ? new[] { "Lanjut", "Pengaturan", "Simpan", "Muat", "Ulangi", "Menu" } :
                 CareerPauseAction is string action ? new[] { "Lanjut", "Pengaturan", "Simpan", action } : new[] { "Lanjut", "Pengaturan", "Simpan" },
-            GameScreen.Settings => new[] { "Bantuan", "Joystick", "ReplayMode", "TrailColor", "ShadowColor", "FrameRate", "Kembali" },
+            GameScreen.Settings => cameraPreviewMode
+                ? new[] { "Tutup preview", "PresetStandar", "PresetTinggi", "PresetDekat", "Reset kamera" }
+                : settingsCameraTab
+                ? new[] { "TabUmum", "TabKamera", "PresetStandar", "PresetTinggi", "PresetDekat", "Preview kamera", "Reset kamera", "Kembali" }
+                : new[] { "TabUmum", "TabKamera", "Bantuan", "Joystick", "ReplayMode", "TrailColor", "ShadowColor", "FrameRate", "Kembali" },
             GameScreen.Credits => new[] { "Kembali" },
             GameScreen.Confirm => new[] { "Ya", "Tidak" },
             _ => replaying ? new[] { "Lewati" } : ShowMatchResult ? (careerMatchId == null ? new[] { "Main lagi", "Menu" }
@@ -90,6 +95,12 @@ namespace JustSmash
             string saved = LocalGameData.GetString("difficulty", "Normal");
             Difficulty = saved == "Easy" || saved == "Hard" ? saved : "Normal";
             assisted = LocalGameData.GetString("assist", "Manual") == "Assisted";
+            JoystickSensitivity = Mathf.Clamp01(LocalGameData.GetFloat("joystickSensitivity", .5f));
+            string camPreset = LocalGameData.GetString("cameraPreset", "Standar");
+            CameraPreset = camPreset == "Tinggi" || camPreset == "Dekat" || camPreset == "Kustom" ? camPreset : "Standar";
+            CameraZoom = Mathf.Clamp01(LocalGameData.GetFloat("cameraZoom", .5f));
+            CameraHeight = Mathf.Clamp01(LocalGameData.GetFloat("cameraHeight", .5f));
+            CameraAngle = Mathf.Clamp01(LocalGameData.GetFloat("cameraAngle", .5f));
             ReplayMode = Mathf.Clamp((int)LocalGameData.GetFloat("replayMode", 1), 0, 2);
             Volume = Mathf.Clamp01(LocalGameData.GetFloat("volume", .7f));
             Application.targetFrameRate = LocalGameData.GetFloat("targetFps", 30) == 60 ? 60 : 30;
@@ -97,14 +108,14 @@ namespace JustSmash
         void ClearGameplayInput()
         {
             shotIntent.Clear();
-            analog = Vector2.zero; charging = servingCharge = jumpHeld = false;
+            SetAnalog(Vector2.zero); charging = servingCharge = jumpHeld = false;
             moveFinger = shotFinger = jumpFinger = serveFinger = pressedShot = -1;
             stickCenter = DefaultStickCenter;
         }
         void EnterGameScreen(bool training)
         {
             screen = training ? GameScreen.Training : GameScreen.Playing; menuNotice = null;
-            Time.timeScale = 1; ClearGameplayInput(); view.fieldOfView = 48; SetShuttleVisible(true);
+            Time.timeScale = 1; ClearGameplayInput(); ApplyGameplayCamera(true); SetShuttleVisible(true);
         }
         public void EnterTraining()
         {
@@ -116,23 +127,52 @@ namespace JustSmash
             opponent.SetPositionAndRotation(new Vector3(0, 0, 4), Quaternion.Euler(0, 180, 0));
             previousPlayer = player.position; previousOpponent = opponent.position;
             swingAt = aiContactAt = Time.time - 10;
-            view.transform.position = new Vector3(.2f, 4f, -14.2f); view.transform.LookAt(new Vector3(.2f, 0, -1));
+            ApplyGameplayCamera(true);
         }
         void OpenUi(GameScreen next)
         {
             StopCourtAudio();
             if (next == GameScreen.Settings || next == GameScreen.Credits) settingsReturn = screen;
+            if (next != GameScreen.Settings) { settingsCameraTab = false; cameraPreviewMode = false; }
             ClearGameplayInput(); screen = next; menuNotice = null;
             Time.timeScale = next == GameScreen.Home || next == GameScreen.Setup ? 1 : 0;
             if (next == GameScreen.Home || next == GameScreen.Setup) StageMenu();
+        }
+        void StageCameraPreview()
+        {
+            SetShuttleVisible(true);
+            shuttle.position = new Vector3(0, 1.5f, 0);
+            shadow.position = new Vector3(0, .02f, 0);
+            player.SetPositionAndRotation(new Vector3(0, 0, -4), Quaternion.identity);
+            opponent.SetPositionAndRotation(new Vector3(0, 0, 4), Quaternion.Euler(0, 180, 0));
+            playerVisual.Present("Ready", 1, Vector3.zero, Vector3.zero, 0, 0);
+            opponentVisual.Present("Ready", 1, Vector3.zero, Vector3.zero, 0, 0);
+            ApplyGameplayCamera(true);
         }
         public Rect UiActionRect(string action)
         {
             float w = UiWidth, h = UiHeight;
             int index = Array.IndexOf(UiActions, action);
             if (index < 0) return Rect.zero;
-            if (screen == GameScreen.CareerAppearance && action != "Kembali") return new Rect(48 + index / 5 * 326, 166 + index % 5 * 84, 306, 68);
-            if (CareerMenu) return screen == GameScreen.CareerArchive || action == "Kembali" ? new Rect(w - 216, 28, 176, 64) : new Rect(48 + index / 5 * 452, 212 + index % 5 * 78, 420, 64);
+            if (screen == GameScreen.CareerAppearance)
+            {
+                if (action == "Kembali") return new Rect(w - 216, 28, 176, 64);
+                return new Rect(44 + index / 7 * 316, 128 + index % 7 * 72, 304, 64);
+            }
+            if (CareerMenu)
+            {
+                if (action == "Kembali") return new Rect(w - 208, 28, 168, 64);
+                if (action == "TabRingkasan" || action == "TabKalender" || action == "TabAtlet" || action == "TabArsip")
+                {
+                    int tab = action == "TabRingkasan" ? 0 : action == "TabKalender" ? 1 : action == "TabAtlet" ? 2 : 3;
+                    return new Rect(44 + tab * 168, 90, 158, 64);
+                }
+                if (screen == GameScreen.CareerSlots || screen == GameScreen.CareerCreate)
+                    return new Rect(48 + index / 5 * 452, 212 + index % 5 * 78, 420, 64);
+                int bodyIndex = index - 5; // 4 tabs + Kembali precede page actions
+                float colW = Mathf.Min(420, (w - 112) * .48f);
+                return new Rect(44 + bodyIndex / 4 * (colW + 24), 312 + bodyIndex % 4 * 76, colW, 64);
+            }
             if (screen == GameScreen.Home && action == "Karier") return new Rect(w - 230, h - 104, 188, 64);
             if (screen == GameScreen.Home) return action == "Main" ? new Rect(46, 428, 354, 100)
                 : action == "Latihan" ? new Rect(50, 548, 324, 70)
@@ -144,7 +184,29 @@ namespace JustSmash
                 return index == 3 ? new Rect(46, 568, 340, 78) : new Rect(w - 212, 24, 172, 64);
             }
             if (screen == GameScreen.Settings)
-                return action == "Kembali" ? new Rect(w - 212, 28, 172, 64) : new Rect(44, 130 + index * 78, 416, 64);
+            {
+                if (cameraPreviewMode)
+                {
+                    if (action == "Tutup preview") return new Rect(w - 236, 28, 196, 64);
+                    if (action == "Reset kamera") return new Rect(w - 236, h - 88, 196, 64);
+                    int p = action == "PresetStandar" ? 0 : action == "PresetTinggi" ? 1 : 2;
+                    return new Rect(44 + p * 184, h - 88, 172, 64);
+                }
+                if (action == "Kembali") return new Rect(w - 212, 28, 172, 64);
+                if (action == "TabUmum") return new Rect(44, 102, 168, 64);
+                if (action == "TabKamera") return new Rect(224, 102, 168, 64);
+                if (settingsCameraTab)
+                {
+                    if (action == "PresetStandar" || action == "PresetTinggi" || action == "PresetDekat")
+                    {
+                        int p = action == "PresetStandar" ? 0 : action == "PresetTinggi" ? 1 : 2;
+                        return new Rect(44, 180 + p * 78, 416, 64);
+                    }
+                    if (action == "Preview kamera") return new Rect(44, 430, 416, 64);
+                    if (action == "Reset kamera") return new Rect(44, 508, 416, 64);
+                }
+                return new Rect(44, 178 + (index - 2) * 76, 416, 64);
+            }
             if (screen == GameScreen.Credits) return new Rect(w - 212, 28, 172, 64);
             if (screen == GameScreen.Pause) return new Rect(w / 2 - 180, 132 + index * 76, 360, 64);
             if (screen == GameScreen.Confirm) return new Rect(w / 2 - 180 + index * 192, h / 2 + 34, 168, 64);
@@ -170,13 +232,38 @@ namespace JustSmash
             }
             return !GameplayInputEnabled;
         }
+        static readonly Color[] TrailPalette = { Color.white, Color.yellow };
+        static readonly Color[] ShadowPalette = { new Color(.12f, .18f, .18f), Color.black };
+        static int SwatchHit(Rect rect, int count, Vector2 point)
+        {
+            if (count <= 0) return -1;
+            float size = 24f, gap = 6f, total = count * size + (count - 1) * gap;
+            float startX = rect.xMax - 16f - total, y = rect.center.y - size * .5f;
+            for (int i = 0; i < count; i++)
+                if (new Rect(startX + i * (size + gap), y, size, size).Contains(point)) return i;
+            return -1;
+        }
         bool UiPointerUp(int id)
         {
             if (id != menuFinger) return false;
             string action = menuAction;
-            bool commit = UiActionRect(action).Contains(menuPoint);
+            Rect rect = UiActionRect(action);
+            bool commit = rect.Contains(menuPoint);
+            int swatch = -1;
+            if (commit)
+            {
+                if (screen == GameScreen.Settings && action == "TrailColor") swatch = SwatchHit(rect, TrailPalette.Length, menuPoint);
+                else if (screen == GameScreen.Settings && action == "ShadowColor") swatch = SwatchHit(rect, ShadowPalette.Length, menuPoint);
+                else if (screen == GameScreen.CareerAppearance && AppearanceSwatchCount(action) is int n && n > 0) swatch = SwatchHit(rect, n, menuPoint);
+            }
             menuFinger = -1; menuAction = null;
-            if (commit) ActOnUi(action);
+            if (commit)
+            {
+                if (swatch >= 0 && screen == GameScreen.CareerAppearance) ApplyAppearanceSwatch(action, swatch);
+                else if (swatch >= 0 && action == "TrailColor") ConfigureVisibility(trailBrightness, shadowBrightness, TrailPalette[swatch], shadowTint);
+                else if (swatch >= 0 && action == "ShadowColor") ConfigureVisibility(trailBrightness, shadowBrightness, trailTint, ShadowPalette[swatch]);
+                else ActOnUi(action);
+            }
             return true;
         }
         void ActOnUi(string action)
@@ -206,6 +293,14 @@ namespace JustSmash
                     break;
                 case "Simpan": RunMenuAction("Save"); break;
                 case "Muat": RunMenuAction("Load"); break;
+                case "TabUmum": settingsCameraTab = false; cameraPreviewMode = false; break;
+                case "TabKamera": settingsCameraTab = true; cameraPreviewMode = false; StageCameraPreview(); break;
+                case "PresetStandar": ConfigureCameraPreset("Standar"); StageCameraPreview(); break;
+                case "PresetTinggi": ConfigureCameraPreset("Tinggi"); StageCameraPreview(); break;
+                case "PresetDekat": ConfigureCameraPreset("Dekat"); StageCameraPreview(); break;
+                case "Preview kamera": cameraPreviewMode = true; StageCameraPreview(); break;
+                case "Tutup preview": cameraPreviewMode = false; break;
+                case "Reset kamera": ResetCamera(); StageCameraPreview(); break;
                 case "Bantuan": assisted = !assisted; LocalGameData.SetString("assist", assisted ? "Assisted" : "Manual"); break;
                 case "Joystick": ConfigureJoystick(JoystickMode == "Fixed" ? "Floating" : "Fixed"); break;
                 case "ReplayMode": ReplayMode = (ReplayMode + 1) % 3; LocalGameData.SetFloat("replayMode", ReplayMode); break;
@@ -368,24 +463,60 @@ namespace JustSmash
             "Easy" => "Mudah", "Hard" => "Sulit", "Pause" => "Jeda", "Teruskan" => flowStage == "Warmup" ? "Bersiap" : flowStage == "Ready" ? "Mulai bermain" : "Lanjut",
             "Bantuan" => "Gerak: " + (assisted ? "Assisted" : "Manual"),
             "Joystick" => "Joystick: " + JoystickMode,
+            "TabUmum" => "Umum", "TabKamera" => "Kamera",
+            "PresetStandar" => "Preset: Standar", "PresetTinggi" => "Preset: Tinggi", "PresetDekat" => "Preset: Dekat",
             "ReplayMode" => "Replay: " + (ReplayMode == 2 ? "OFF" : ReplayMode == 1 ? "Gameplay" : "Sudut + gameplay"),
-            "TrailColor" => "Warna jejak: " + (trailTint == Color.yellow ? "Kuning" : "Putih"),
-            "ShadowColor" => "Warna bayangan: #" + ColorUtility.ToHtmlStringRGB(shadowTint), "FrameRate" => Application.targetFrameRate + " FPS",
+            "TrailColor" => "Jejak: " + (trailTint == Color.yellow ? "Kuning" : "Putih"),
+            "ShadowColor" => "Bayangan #" + ColorUtility.ToHtmlStringRGB(shadowTint), "FrameRate" => Application.targetFrameRate + " FPS",
             "Challenge" => "Tinjau garis (" + Match.Challenges[0] + ")", "Ulangi" => "Ulangi pertandingan", _ => action
         };
+        void DrawSwatches(Rect rect, Color[] palette, int active)
+        {
+            float size = 24f, gap = 6f, total = palette.Length * size + (palette.Length - 1) * gap;
+            float startX = rect.xMax - 16f - total, y = rect.center.y - size * .5f;
+            for (int i = 0; i < palette.Length; i++)
+            {
+                var box = new Rect(startX + i * (size + gap), y, size, size);
+                FillUi(new Rect(box.x - 2, box.y - 2, box.width + 4, box.height + 4), i == active ? inkColor : new Color(.45f, .52f, .65f));
+                FillUi(box, palette[i]);
+            }
+        }
         void DrawUiButton(string action)
         {
             Rect rect = UiActionRect(action); if (rect.width <= 0) return;
-            bool selected = screen == GameScreen.Setup && (action == Difficulty || action == "Ganda" && doublesSelected || action == "Tunggal" && !doublesSelected);
+            bool selected = screen == GameScreen.Setup && (action == Difficulty || action == "Ganda" && doublesSelected || action == "Tunggal" && !doublesSelected)
+                || screen == GameScreen.Settings && (action == "TabUmum" && !settingsCameraTab || action == "TabKamera" && settingsCameraTab
+                    || action == "PresetStandar" && CameraPreset == "Standar" || action == "PresetTinggi" && CameraPreset == "Tinggi" || action == "PresetDekat" && CameraPreset == "Dekat")
+                || CareerMenu && (action == "TabRingkasan" && screen == GameScreen.CareerSummary || action == "TabKalender" && screen == GameScreen.CareerCalendar
+                    || action == "TabAtlet" && screen == GameScreen.CareerAthlete || action == "TabArsip" && screen == GameScreen.CareerArchive);
             bool pressed = menuFinger != -1 && menuAction == action;
-            bool primary = action == "Main" || action == "Mulai" || action == "Teruskan" || action == "Main lagi" || action == "Lanjut";
+            bool primary = action == "Main" || action == "Mulai" || action == "Teruskan" || action == "Main lagi" || action == "Lanjut" || action == "Main laga" || action == "Lanjut laga";
             bool link = screen == GameScreen.Home && (action == "Pengaturan" || action == "Kredit") || Match != null && Match.Winner >= 0 && action == "Menu";
             if (link)
             {
                 var style = new GUIStyle(smallStyle) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
                 style.normal.textColor = pressed ? accentColor : textColor; GUI.Label(rect, ActionLabel(action).ToUpperInvariant(), style); return;
             }
-            DrawControl(rect, (CareerMenu ? CareerLabel(action) : ActionLabel(action)).ToUpperInvariant(), selected || primary, pressed, action == "Main" ? 50 : action == "Mulai" ? 40 : screen == GameScreen.CareerAppearance ? 18 : screen == GameScreen.Settings ? 24 : 28);
+            Color[] swatches = null; int activeSwatch = -1;
+            if (screen == GameScreen.Settings && action == "TrailColor") { swatches = TrailPalette; activeSwatch = trailTint == Color.yellow ? 1 : 0; }
+            else if (screen == GameScreen.Settings && action == "ShadowColor") { swatches = ShadowPalette; activeSwatch = shadowTint == Color.black ? 1 : 0; }
+            else if (screen == GameScreen.CareerAppearance) swatches = AppearanceSwatches(action, out activeSwatch);
+            string text = (CareerMenu ? CareerLabel(action) : ActionLabel(action)).ToUpperInvariant();
+            if (swatches != null)
+            {
+                MaskUi(new Rect(rect.x + 4, rect.y + 6, rect.width, rect.height), slantTexture, inkColor);
+                if (pressed) rect.y += 3;
+                MaskUi(rect, slantTexture, inkColor);
+                MaskUi(new Rect(rect.x + 3, rect.y + 3, rect.width - 6, rect.height - 6), slantTexture, textColor);
+                buttonStyle.fontSize = screen == GameScreen.CareerAppearance ? 17 : 22;
+                buttonStyle.normal.textColor = inkColor;
+                var prevAlign = buttonStyle.alignment; buttonStyle.alignment = TextAnchor.MiddleLeft;
+                GUI.Label(new Rect(rect.x + 18, rect.y, rect.width - 144, rect.height), text, buttonStyle);
+                buttonStyle.alignment = prevAlign;
+                DrawSwatches(rect, swatches, activeSwatch);
+                return;
+            }
+            DrawControl(rect, text, selected || primary, pressed, action == "Main" ? 50 : action == "Mulai" ? 40 : screen == GameScreen.CareerAppearance ? 18 : screen == GameScreen.Settings ? 22 : 26);
             if (selected) FillUi(new Rect(rect.x + 24, rect.yMax - 9, rect.width - 48, 3), inkColor);
         }
         void OnGUI()
@@ -397,7 +528,7 @@ namespace JustSmash
             bool playing = screen == GameScreen.Playing || screen == GameScreen.Training;
             if (!playing)
             {
-                if (screen != GameScreen.Home && screen != GameScreen.Setup) FillUi(new Rect(0, 0, w, h), new Color(.027f, .098f, .243f, screen == GameScreen.CareerAppearance ? .18f : .62f));
+                if (screen != GameScreen.Home && screen != GameScreen.Setup) FillUi(new Rect(0, 0, w, h), new Color(.027f, .098f, .243f, screen == GameScreen.CareerAppearance || cameraPreviewMode ? .08f : settingsCameraTab ? .42f : .62f));
                 if (screen == GameScreen.Home || screen == GameScreen.Setup)
                 {
                     MenuSweep(h);
@@ -416,11 +547,24 @@ namespace JustSmash
                         GUI.Label(new Rect(52, 438, 350, 32), "KESULITAN LAWAN", new GUIStyle(smallStyle) { fontSize = 19 });
                     }
                     var venue = new GUIStyle(smallStyle) { alignment = TextAnchor.UpperRight };
-                    if (screen == GameScreen.Home) GUI.Label(new Rect(w - 620, 30, 580, 36), "GELANGGANG JUST SMASH", venue);
+                    if (screen == GameScreen.Home) GUI.Label(new Rect(Mathf.Max(480, w - 620), 30, Mathf.Min(580, w - 504), 36), "GELANGGANG JUST SMASH", venue);
                 }
                 else if (CareerMenu) DrawCareer(w, h);
                 else if (screen == GameScreen.Pause) { PanelUi(new Rect(w / 2 - 212, 40, 424, 604)); GUI.Label(new Rect(w / 2 - 180, 54, 360, 64), "JEDA", titleStyle); }
-                else if (screen == GameScreen.Settings) { PanelUi(new Rect(24, 24, w - 48, h - 48)); GUI.Label(new Rect(44, 44, 450, 64), "Pengaturan", titleStyle); DrawSettings(); }
+                else if (screen == GameScreen.Settings)
+                {
+                    if (cameraPreviewMode)
+                    {
+                        PanelUi(new Rect(24, 24, 520, 64));
+                        GUI.Label(new Rect(40, 36, 490, 40), $"Preview Kamera · {CameraPreset} (Zoom {CameraZoom:P0} · Tinggi {CameraHeight:P0} · Sudut {CameraAngle:P0})", smallStyle);
+                    }
+                    else
+                    {
+                        PanelUi(new Rect(24, 24, w - 48, h - 48));
+                        GUI.Label(new Rect(44, 40, 450, 58), "Pengaturan", titleStyle);
+                        DrawSettings();
+                    }
+                }
                 else if (screen == GameScreen.Credits)
                 {
                     PanelUi(new Rect(24, 24, w - 48, h - 48)); GUI.Label(new Rect(44, 44, 500, 64), "Kredit", titleStyle);
@@ -432,11 +576,43 @@ namespace JustSmash
             else DrawGameHud(w, h);
             foreach (string action in UiActions) DrawUiButton(action);
             if (MenuNotice.Length > 0) GUI.Label(new Rect(24, h - 56, w - 48, 48), MenuNotice, smallStyle);
+            if (ShowTouchOverlay) DrawTouchOverlay();
+        }
+        public bool ShowTouchOverlay { get; set; }
+        readonly System.Collections.Generic.Dictionary<int, Vector2> activeTouches = new System.Collections.Generic.Dictionary<int, Vector2>();
+        readonly System.Collections.Generic.List<(Vector2 point, float until)> recentTouches = new System.Collections.Generic.List<(Vector2, float)>();
+        void RecordTouchDown(int id, Vector2 point)
+        {
+            if (!ShowTouchOverlay) return;
+            activeTouches[id] = point;
+            recentTouches.Add((point, Time.unscaledTime + .35f));
+        }
+        void RecordTouchMove(int id, Vector2 point) { if (ShowTouchOverlay && activeTouches.ContainsKey(id)) activeTouches[id] = point; }
+        void RecordTouchUp(int id)
+        {
+            if (!ShowTouchOverlay) return;
+            if (activeTouches.TryGetValue(id, out var p)) { recentTouches.Add((p, Time.unscaledTime + .25f)); activeTouches.Remove(id); }
+        }
+        void DrawTouchOverlay()
+        {
+            float now = Time.unscaledTime;
+            for (int i = recentTouches.Count - 1; i >= 0; i--)
+            {
+                var item = recentTouches[i];
+                if (now > item.until) { recentTouches.RemoveAt(i); continue; }
+                MaskUi(new Rect(item.point.x - 24, item.point.y - 24, 48, 48), circleTexture, new Color(1, .855f, .271f, .45f));
+            }
+            foreach (var pair in activeTouches)
+            {
+                var p = pair.Value;
+                MaskUi(new Rect(p.x - 28, p.y - 28, 56, 56), circleTexture, new Color(0, .92f, 1, .55f));
+                MaskUi(new Rect(p.x - 10, p.y - 10, 20, 20), circleTexture, Color.white);
+            }
         }
         public static Rect[] SettingsSliderRects(Vector2 size)
         {
-            float x = Mathf.Max(500, size.x * .5f);
-            return new[] { new Rect(x, 176, size.x - x - 48, 48), new Rect(x, 288, size.x - x - 48, 48), new Rect(x, 400, size.x - x - 48, 48) };
+            float x = Mathf.Max(500, size.x * .5f), w = size.x - x - 48;
+            return new[] { new Rect(x, 160, w, 48), new Rect(x, 250, w, 48), new Rect(x, 340, w, 48), new Rect(x, 430, w, 48) };
         }
         float SettingsSlider(Rect rect, float value)
         {
@@ -450,15 +626,34 @@ namespace JustSmash
         {
             var rects = SettingsSliderRects(new Vector2(UiWidth, UiHeight));
             float x = rects[0].x, width = rects[0].width;
-            GUI.Label(new Rect(x, 130, width, 40), "Volume  " + Volume.ToString("P0"), bodyStyle);
+            if (settingsCameraTab)
+            {
+                GUI.Label(new Rect(x, 120, width, 36), "Zoom kamera  " + CameraZoom.ToString("P0"), bodyStyle);
+                float zoom = SettingsSlider(rects[0], CameraZoom);
+                GUI.Label(new Rect(x, 210, width, 36), "Tinggi kamera  " + CameraHeight.ToString("P0"), bodyStyle);
+                float height = SettingsSlider(rects[1], CameraHeight);
+                GUI.Label(new Rect(x, 300, width, 36), "Sudut kamera  " + CameraAngle.ToString("P0"), bodyStyle);
+                float angle = SettingsSlider(rects[2], CameraAngle);
+                if (Mathf.Abs(zoom - CameraZoom) > .001f || Mathf.Abs(height - CameraHeight) > .001f || Mathf.Abs(angle - CameraAngle) > .001f)
+                {
+                    ConfigureCamera(zoom, height, angle, "Kustom");
+                    StageCameraPreview();
+                }
+                GUI.Label(new Rect(x, 400, width, 160), $"Preset aktif: {CameraPreset}\nStandar: pandangan rally penuh.\nTinggi: garis & posisi atlet lebih terbaca.\nDekat: aksi net dan smash lebih rapat.", smallStyle);
+                return;
+            }
+            GUI.Label(new Rect(x, 120, width, 36), "Volume  " + Volume.ToString("P0"), bodyStyle);
             float volume = SettingsSlider(rects[0], Volume);
             if (Mathf.Abs(volume - Volume) > .001f) { Volume = volume; LocalGameData.SetFloat("volume", volume); }
-            GUI.Label(new Rect(x, 242, width, 40), "Kecerahan jejak  " + trailBrightness.ToString("P0"), bodyStyle);
+            GUI.Label(new Rect(x, 210, width, 36), "Kecerahan jejak  " + trailBrightness.ToString("P0"), bodyStyle);
             float trail = SettingsSlider(rects[1], trailBrightness);
-            GUI.Label(new Rect(x, 354, width, 40), "Kekuatan bayangan  " + shadowBrightness.ToString("P0"), bodyStyle);
+            GUI.Label(new Rect(x, 300, width, 36), "Kekuatan bayangan  " + shadowBrightness.ToString("P0"), bodyStyle);
             float shade = SettingsSlider(rects[2], shadowBrightness);
             if (Mathf.Abs(trail - trailBrightness) > .001f || Mathf.Abs(shade - shadowBrightness) > .001f) ConfigureVisibility(trail, shade, trailTint, shadowTint);
-            GUI.Label(new Rect(x, 480, width, 150), "Manual: joystick menggerakkan kaki.\nAssisted: kaki dibantu; joystick memilih arah.\nKeyboard: WASD, 1–5 pukulan, Space lompat, L servis.", smallStyle);
+            GUI.Label(new Rect(x, 390, width, 36), "Sensitivitas joystick  " + Mathf.RoundToInt(Mathf.Lerp(50f, 150f, JoystickSensitivity)) + "%", bodyStyle);
+            float sensitivity = SettingsSlider(rects[3], JoystickSensitivity);
+            if (Mathf.Abs(sensitivity - JoystickSensitivity) > .001f) ConfigureJoystickSensitivity(sensitivity);
+            GUI.Label(new Rect(x, 500, width, 150), "Manual: joystick menggerakkan kaki.\nAssisted: kaki dibantu; joystick memilih arah.\nKeyboard: WASD, 1–5 pukulan, Space lompat, L servis.", smallStyle);
         }
         string PointNotice
         {
@@ -486,7 +681,7 @@ namespace JustSmash
                 return (Match == null || MatchState == "Rally") && feedback.StartsWith(miss, StringComparison.Ordinal) ? feedback.Substring(miss.Length) : "";
             }
         }
-        string HudScoreHeader => Match == null ? "LATIHAN" : "GAME " + Match.GameNumber + " / " + ActionLabel(Difficulty);
+        string HudScoreHeader => Match == null ? "LATIHAN" : "GAME " + DisplayGameNumber + " / " + ActionLabel(Difficulty);
         Rect HudNoticeRect => new Rect(24, 230, 350, 64);
         Rect FlowPanelRect => new Rect(24, 230, 350, 222);
         string ResultWinnerLabel => "Pemenang: " + TeamName(Match.Winner);
@@ -523,8 +718,8 @@ namespace JustSmash
                 GUI.Label(new Rect(296, 32, 64, 24), "POIN", new GUIStyle(smallStyle) { fontSize = 16, alignment = TextAnchor.MiddleCenter });
                 GUI.Label(new Rect(40, 58, 250, 32), (Match.Server == 0 ? "•  " : "   ") + TeamName(0), bodyStyle);
                 GUI.Label(new Rect(40, 92, 250, 32), (Match.Server == 1 ? "•  " : "   ") + TeamName(1), bodyStyle);
-                GUI.Label(new Rect(296, 54, 64, 40), Match.Points[0].ToString(), scoreStyle);
-                GUI.Label(new Rect(296, 88, 64, 40), Match.Points[1].ToString(), scoreStyle);
+                GUI.Label(new Rect(296, 54, 64, 40), DisplayPoints(0).ToString(), scoreStyle);
+                GUI.Label(new Rect(296, 88, 64, 40), DisplayPoints(1).ToString(), scoreStyle);
                 GUI.Label(new Rect(40, 128, 280, 24), Match.Games[0] + " : " + Match.Games[1] + " GAME", new GUIStyle(smallStyle) { fontSize = 18 });
             }
             FillUi(new Rect(24, score.yMax + 12, 180, 7), panelColor);

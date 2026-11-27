@@ -7,6 +7,16 @@ namespace JustSmash
         float pointWait;
         bool finalPointPending, closingReplay;
         bool SetPointPending => Match != null && (finalPointPending || MatchState == "Point" && Match.GameNumber > flowGame);
+        bool HoldingSetScore => Match != null && Match.Winner < 0 && (MatchState == "Point" || replaying) && Match.GameNumber > flowGame;
+        int DisplayGameNumber => HoldingSetScore ? flowGame : Match.GameNumber;
+        int DisplayPoints(int side)
+        {
+            if (!HoldingSetScore) return Match.Points[side];
+            int idx = (flowGame - 1) * 2 + side;
+            return Match.GamePoints != null && idx >= 0 && idx < Match.GamePoints.Length && Match.GamePoints[idx] >= 0
+                ? Match.GamePoints[idx]
+                : Match.Points[side];
+        }
         bool ShowMatchResult => Match != null && Match.Winner >= 0 && !finalPointPending && !replaying;
         void ContinuePoint(float dt)
         {
@@ -19,7 +29,7 @@ namespace JustSmash
         {
             pointWait = 0;
             reviewAvailable = false;
-            if (SetPointPending && ReplayMode != 2 && replay.Count >= 2)
+            if (!pointReplayed && SetPointPending && ReplayMode != 2 && replay.Count >= 2)
             {
                 // Playback is half speed: keep at most three seconds of screen time.
                 int keep = Mathf.Max(2, Mathf.CeilToInt(1.5f / Time.fixedDeltaTime));
@@ -27,10 +37,12 @@ namespace JustSmash
                 closingReplay = BeginReplay();
                 if (closingReplay) return;
             }
+            pointReplayed = false;
             NextPoint();
         }
         void ScorePoint(int winner)
         {
+            pointReplayed = false;
             Match.AwardPoint(winner);
             finalPointPending = Match.Winner >= 0;
             MatchState = finalPointPending ? "MatchEnd" : "Point";

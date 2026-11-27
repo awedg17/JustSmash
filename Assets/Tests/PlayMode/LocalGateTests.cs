@@ -207,6 +207,8 @@ public class LocalGateTests : PreferenceFixture
         Set("velocity", Vector3.down);
         LogAssert.Expect(LogType.Log, new Regex(@"\[collision\] ground.*"));
         type.GetMethod("FixedUpdate", Hidden).Invoke(court, null);
+        Assert.That((bool)type.GetField("replaying", Hidden).GetValue(court), Is.False, "Do not auto-replay non-final points before review closes");
+        Assert.That(Call("BeginReplay"), Is.EqualTo(true));
         Assert.That((bool)type.GetField("replaying", Hidden).GetValue(court), Is.True);
         Call("SkipReplay");
         Assert.That(GameObject.Find("Shuttle").transform.position.y, Is.EqualTo(.04f).Within(.0001f));
@@ -914,7 +916,7 @@ public class LocalGateTests : PreferenceFixture
         type.GetMethod("FixedUpdate", Hidden).Invoke(court, null);
         Assert.That(Get<Vector3>("ShuttleVelocity").z, Is.LessThan(0), "Below-tape shuttle must rebound, not receive clearance rescue");
         Call("Feed", "Net"); shuttle.position = player.position + new Vector3(3, 2.1f, 0);
-        Call("BeginShot", "Smash"); LogAssert.Expect(LogType.Log, new Regex(@"\[hit\] Poor.*outside reach.*"));
+        Call("BeginShot", "Smash"); LogAssert.Expect(LogType.Log, new Regex(@"\[hit\] Poor.*Di luar jangkauan.*"));
         Assert.That(Call("ReleaseShot"), Is.EqualTo(false), "No aim/reach rescue");
     }
     [UnityTest] public IEnumerator StrokeCalibrationRecordsNetClearanceAndLandingPerCase()

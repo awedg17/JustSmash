@@ -107,7 +107,7 @@ public class CourtSmokeTests : PreferenceFixture
         type.GetMethod("PointerMove", flags).Invoke(court, new object[] { 12, shot.center });
         Assert.That((string)type.GetField("stroke", flags).GetValue(court), Is.EqualTo("Smash"));
         Assert.That((bool)type.GetField("charging", flags).GetValue(court), Is.True);
-        LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(@"\[hit\] Poor \| miss: shuttle inactive.*"));
+        LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(@"\[hit\] Poor \| miss: Kok tidak aktif.*"));
         up.Invoke(court, new object[] { 12 });
         Assert.That((bool)type.GetField("jumpHeld", flags).GetValue(court), Is.False);
         yield return new WaitForSeconds(.1f);
@@ -146,7 +146,7 @@ public class CourtSmokeTests : PreferenceFixture
         yield return new WaitForFixedUpdate(); yield return new WaitForFixedUpdate();
         Assert.That(shuttle.position.z, Is.LessThan(before));
         type.GetMethod("BeginShot").Invoke(court, new object[] { "Smash" });
-        LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("\\[hit\\] Poor \\| miss: outside reach.*"));
+        LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("\\[hit\\] Poor \\| miss: Kok terlalu tinggi untuk smash.*"));
         Assert.That(type.GetMethod("ReleaseShot").Invoke(court, null), Is.EqualTo(false));
         var start = (Vector3)type.GetProperty("PlayerPosition").GetValue(court);
         type.GetMethod("SetAnalog").Invoke(court, new object[] { Vector2.right });

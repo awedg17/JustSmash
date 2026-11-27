@@ -9,7 +9,7 @@ namespace JustSmash
     {
         const string Hip = "Root/Hips", Chest = Hip + "/Spine/Spine1";
         const float RacketLength = .38f, GaitCycleMetres = 2f;
-        Transform athlete, hips, chest, upper, lower, hand, leftUpper, leftLower, leftHand;
+        Transform athlete, hips, chest, upper, lower, hand, leftUpper, leftLower, leftHand, headband;
         readonly Transform[] thighs = new Transform[2], knees = new Transform[2], feet = new Transform[2];
         readonly Vector3[] plants = new Vector3[2];
         readonly Quaternion[] footRest = new Quaternion[2];
@@ -88,7 +88,24 @@ namespace JustSmash
                 }
                 skin.sharedMaterials = materials;
             }
-            MakeRacket(); ApplyAppearance(null); MakeClips(); Present("Ready", 1, Vector3.zero, Vector3.zero, 0, 0);
+            MakeRacket(); MakeHeadband(); ApplyAppearance(null); MakeClips(); Present("Ready", 1, Vector3.zero, Vector3.zero, 0, 0);
+        }
+        void MakeHeadband()
+        {
+            var head = Bone(Chest + "/Neck/Head");
+            var band = new GameObject("Headband").AddComponent<LineRenderer>();
+            band.transform.SetParent(head, false);
+            band.useWorldSpace = false; band.loop = true; band.positionCount = 24;
+            band.startWidth = band.endWidth = .028f;
+            var mat = new Material(Shader.Find("Sprites/Default"));
+            band.sharedMaterial = mat; toonMaterials.Add(mat);
+            for (int i = 0; i < 24; i++)
+            {
+                float a = i * Mathf.PI * 2 / 24;
+                band.SetPosition(i, new Vector3(Mathf.Cos(a) * .096f, .118f + Mathf.Sin(a) * .01f, Mathf.Sin(a) * .106f));
+            }
+            headband = band.transform;
+            headband.gameObject.SetActive(false);
         }
         public void ApplyAppearance(AvatarAppearance look)
         {
@@ -112,7 +129,18 @@ namespace JustSmash
                 else if (skin.name.Contains("pants")) block.SetColor("_Color", AvatarAppearance.Dark[look.pantsId]);
                 else if (skin.name.Contains("shoe")) block.SetColor("_Color", AvatarAppearance.Palette[look.shoeColorId]);
                 else if (skin.name.Contains("haircut")) block.SetColor("_Color", AvatarAppearance.Dark[look.hairColorId]);
+                else if (skin.name.Contains("head") || skin.name.Contains("arms")) block.SetColor("_Color", AvatarAppearance.FaceTones[look.faceId]);
                 skin.SetPropertyBlock(block.isEmpty ? null : block);
+            }
+            if (headband != null)
+            {
+                bool showBand = look != null && look.hairStyleId == 1;
+                headband.gameObject.SetActive(showBand);
+                if (showBand)
+                {
+                    var lr = headband.GetComponent<LineRenderer>();
+                    lr.startColor = lr.endColor = AvatarAppearance.Palette[look.jerseyColorId];
+                }
             }
             foreach (var line in Grip.GetComponentsInChildren<LineRenderer>())
                 line.startColor = line.endColor = line.name == "Grip" ? (look == null ? new Color(.11f, .14f, .17f) : AvatarAppearance.Dark[look.gripColorId])
@@ -189,7 +217,11 @@ namespace JustSmash
             string label = shot == "Clear" ? "lob" : shot.ToLowerInvariant();
             if (p.y < (high ? 1.45f : .25f)) return "Kok terlalu rendah untuk " + label;
             if (p.y > (high ? 2.8f : 1.9f)) return "Kok terlalu tinggi untuk " + label;
-            Vector3 shoulder = athlete.TransformPoint(new Vector3(.183f, high ? 1.46f : 1.34f, -.018f));
+            float shoulderX = p.x < -.1f ? Mathf.Lerp(.183f, -.06f, Mathf.Clamp01((-p.x - .1f) / .45f))
+                : Mathf.Lerp(.183f, .22f, Mathf.Clamp01((p.x - .183f) / .55f));
+            float shoulderY = high ? 1.46f : Mathf.Lerp(1.22f, 1.34f, Mathf.Clamp01((p.y - .30f) / .55f));
+            float shoulderZ = p.z < 0 ? Mathf.Lerp(-.018f, -.12f, Mathf.Clamp01(-p.z / .45f)) : -.018f;
+            Vector3 shoulder = athlete.TransformPoint(new Vector3(shoulderX, shoulderY, shoulderZ));
             return Vector3.Distance(point, shoulder) < armLength + RacketLength - .012f ? "" : "Di luar jangkauan";
         }
         public void Present(string stroke, float elapsed, Vector3 contact, Vector3 displacement, float jumpHeight, float landing)
@@ -199,6 +231,7 @@ namespace JustSmash
             hips.localPosition = hipPosition;
             bool active = elapsed >= 0 && elapsed < .65f, back = athlete.InverseTransformPoint(contact).x < -.1f;
             bool low = stroke == "Net" || stroke == "Lift" || stroke == "Serve";
+            bool menu = stroke == "Menu" && !active;
             travel += displacement.magnitude;
             Vector3 localStep = athlete.InverseTransformDirection(displacement);
             CurrentClip = active ? (back ? low ? "BackhandLow" : "Backhand" : stroke) : jumpHeight > .01f ? "Jump" : landing > 0 ? "Land" : displacement.sqrMagnitude > .00001f ? (Mathf.Abs(localStep.x) > Mathf.Abs(localStep.z) ? localStep.x > 0 ? "MoveRight" : "MoveLeft" : localStep.z > 0 ? "MoveForward" : "MoveBackward") : "Ready";
@@ -217,25 +250,33 @@ namespace JustSmash
             ClipTime = active ? Mathf.Min(selected.length, elapsed + selected.length / 3) : Mathf.Repeat(travel * .22f, selected.length);
             selected.time = ClipTime; clips.Sample(); selected.enabled = false; // Manual sample owns pose; automatic pass must not overwrite IK or pause.
             float recovery = active ? 1 - Mathf.SmoothStep(0, 1, (elapsed - .18f) / .47f) : 0;
-            hips.localPosition = hipPosition - Vector3.up * (.035f + (low ? .12f * recovery : 0) + landing * .08f);
+            float lungeBlend = active && low ? (elapsed < .18f ? Mathf.SmoothStep(0, 1, elapsed / .18f) : 1f - Mathf.SmoothStep(0, 1, (elapsed - .18f) / .47f)) : 0;
+            float athleticDrop = menu ? .02f : .095f;
+            float lowCrouch = active && low ? Mathf.Max(.11f * lungeBlend, Mathf.Clamp01((.75f - athlete.InverseTransformPoint(contact).y) / .5f) * .14f * recovery) : 0f;
+            hips.localPosition = hipPosition - Vector3.up * (athleticDrop + lowCrouch + landing * .09f);
             if (active)
             {
                 Vector3 local = athlete.InverseTransformPoint(contact);
-                hips.localRotation = bind[hips] * Quaternion.Euler(0, 0, Mathf.Clamp(-local.x * 28, -16, 16) * recovery);
+                float reachBlend = elapsed < .08f ? 1f : recovery;
+                float leanX = Mathf.Clamp((local.x - .12f) * .30f, -.28f, .14f) * reachBlend;
+                float leanZ = Mathf.Clamp(local.z * .26f, -.18f, .10f) * reachBlend;
+                hips.localPosition += new Vector3(leanX, 0, leanZ);
+                hips.localRotation = bind[hips] * Quaternion.Euler(Mathf.Clamp(-local.z * 16f, -12f, 14f) * reachBlend, Mathf.Clamp(-local.x * 18f, -14f, 14f) * reachBlend, Mathf.Clamp(-local.x * 28f, -16f, 16f) * reachBlend);
             }
             float preparation = !active ? Mathf.SmoothStep(0, 1, jumpHeight / .30f) : 0;
             // ponytail: small ready-only breath; recorded elapsed freezes/reconstructs it without extra pose state.
             float breath = CurrentClip == "Ready" ? .8f * Mathf.Sin((elapsed - .65f) * (2 * Mathf.PI / 3.2f)) * Mathf.SmoothStep(0, 1, (elapsed - .65f) / .45f) : 0;
-            if (!active) chest.localRotation = bind[chest] * Quaternion.Euler(8 - 20 * preparation + breath, -28 * preparation, 6 * preparation);
+            if (!active) chest.localRotation = bind[chest] * Quaternion.Euler((menu ? 8f : 12f) - 20f * preparation + breath, -28f * preparation, 6f * preparation);
             if (airborneContact > 0)
             {
+                hips.localPosition = Vector3.Lerp(hips.localPosition, hipPosition - Vector3.up * (athleticDrop + landing * .09f), airborneContact);
                 hips.localRotation = Quaternion.Slerp(hips.localRotation, bind[hips], airborneContact);
-                chest.localRotation = Quaternion.Slerp(chest.localRotation, bind[chest] * Quaternion.Euler(8 - 20 * airborne, -28 * airborne, 6 * airborne), airborneContact);
+                chest.localRotation = Quaternion.Slerp(chest.localRotation, bind[chest] * Quaternion.Euler(12 - 20 * airborne, -28 * airborne, 6 * airborne), airborneContact);
                 leftUpper.parent.localRotation = Quaternion.Slerp(leftUpper.parent.localRotation, preparedShoulder, airborneContact);
             }
             // Menu-only resting racket; gameplay ready/contact/recovery remain unchanged.
-            Vector3 ready = athlete.TransformPoint(stroke == "Menu" && !active
-                ? new Vector3(.45f, 1.35f, .25f) : new Vector3(.32f, 1.65f, .40f));
+            Vector3 ready = athlete.TransformPoint(menu
+                ? new Vector3(.45f, 1.35f, .25f) : new Vector3(.32f, 1.58f, .40f));
             Vector3 target = Vector3.Lerp(ready, athlete.TransformPoint(new Vector3(.48f, 2.02f, -.12f)), preparation);
             if (active)
             {
@@ -246,7 +287,8 @@ namespace JustSmash
                 target = elapsed < .18f ? Vector3.Lerp(contact, follow, Mathf.SmoothStep(0, 1, elapsed / .18f)) : Vector3.Lerp(follow, ready, Mathf.SmoothStep(0, 1, (elapsed - .18f) / .47f));
             }
             Vector3 shaft = Vector3.Slerp(athlete.up, (target - upper.position).normalized, Mathf.Max(recovery, preparation));
-            Vector3 palmUp = Vector3.ProjectOnPlane(-athlete.forward, shaft).normalized;
+            Vector3 strokeUp = active && back ? athlete.forward : -athlete.forward;
+            Vector3 palmUp = Vector3.ProjectOnPlane(Vector3.Slerp(-athlete.forward, strokeUp, recovery), shaft).normalized;
             if (palmUp.sqrMagnitude < .001f) palmUp = athlete.up;
             Quaternion palm = Quaternion.LookRotation(shaft, palmUp);
             var socket = hand.Find("RightHandProp");
@@ -264,7 +306,7 @@ namespace JustSmash
             }
             var thumb = hand.Find("RightHandThumb1"); thumb.localRotation = bind[thumb] * Quaternion.Euler(0, -25, 20);
             PoseFreeArm(stroke, localStep, elapsed, recovery, airborne, airborneContact);
-            PlantFeet(displacement, active && low, jumpHeight);
+            PlantFeet(displacement, active && low, jumpHeight, athlete.InverseTransformPoint(contact), lungeBlend);
         }
         void PoseFreeArm(string stroke, Vector3 step, float elapsed, float recovery, float airborne, float airborneContact)
         {
@@ -307,7 +349,7 @@ namespace JustSmash
             var head = Bone(Chest + "/Neck/Head");
             head.localRotation *= Quaternion.Euler((won ? -8 : 14) * weight, 0, 0);
         }
-        void PlantFeet(Vector3 step, bool lunge, float height)
+        void PlantFeet(Vector3 step, bool lunge, float height, Vector3 localContact, float lungeWeight)
         {
             FootContacts = 0;
             bool reconstruct = restoredFeet.recorded;
@@ -329,20 +371,41 @@ namespace JustSmash
                 planted = height <= .01f;
             }
             plantRoot = athlete.position; plantRotation = athlete.rotation;
+            int lead = localContact.x < 0 ? 0 : 1;
             for (int i = 0; i < 2; i++)
             {
                 float cycle = Mathf.Repeat(travel / GaitCycleMetres + i * .5f, 1);
-                Vector3 rest = athlete.TransformPoint(new Vector3(i == 0 ? -.20f : .20f, .13f, lunge ? (i == 1 ? .33f : -.26f) : .03f));
+                Vector3 rest = athlete.TransformPoint(new Vector3(i == 0 ? -.20f : .20f, .13f, .03f));
                 Vector3 target;
                 if (height > .01f) target = rest + athlete.forward * (i == 0 ? -.08f : .08f) + athlete.up * .11f;
-                else if (step.sqrMagnitude < .000001f || lunge) { if (!reconstruct) plants[i] = Vector3.MoveTowards(plants[i], rest, lunge ? .08f : .025f); target = plants[i]; target.y = .13f; }
+                else if (lunge)
+                {
+                    float leadX = lead == 0 ? Mathf.Clamp(localContact.x, -.48f, -.36f) : Mathf.Clamp(localContact.x, .36f, .48f);
+                    Vector3 lungePose = athlete.TransformPoint(i == lead
+                        ? new Vector3(leadX, .13f, Mathf.Clamp(localContact.z, .20f, .38f))
+                        : new Vector3(lead == 0 ? .18f : -.18f, .13f, -.26f));
+                    target = Vector3.Lerp(plants[i], lungePose, lungeWeight);
+                    target.y = .13f;
+                }
+                else if (step.sqrMagnitude < .000001f)
+                {
+                    if (!reconstruct) plants[i] = Vector3.MoveTowards(plants[i], rest, .025f);
+                    target = plants[i]; target.y = .13f;
+                }
                 else if (cycle < .5f)
                 {
                     target = plants[i];
                     float reach = Vector3.Distance(thighs[i].position, knees[i].position) + Vector3.Distance(knees[i].position, feet[i].position);
                     if (Vector3.Distance(target, thighs[i].position) > reach - .0001f) { plants[i] = rest; target = rest; }
                 }
-                else { target = rest + step.normalized * .16f + Vector3.up * Mathf.Sin((cycle - .5f) * Mathf.PI * 2) * .09f; plants[i] = new Vector3(target.x, .13f, target.z); }
+                else
+                {
+                    Vector3 dir = step.normalized;
+                    float swing = (cycle - .5f) * 2f;
+                    Vector3 offset = dir * Mathf.Lerp(-.24f, .28f, Mathf.SmoothStep(0, 1, swing));
+                    target = rest + offset + Vector3.up * Mathf.Sin(swing * Mathf.PI) * .075f;
+                    plants[i] = new Vector3(rest.x + offset.x, .13f, rest.z + offset.z);
+                }
                 Solve(thighs[i], knees[i], feet[i], target, athlete.forward);
                 feet[i].rotation = athlete.rotation * footRest[i];
             }

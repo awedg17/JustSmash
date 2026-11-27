@@ -149,7 +149,7 @@ public class FeedbackTests : PreferenceFixture
                     Source().Stop(); Hit(); Check("same-side-repeat", false);
                     Call("ReleaseShot"); CallHidden("TryBufferedShot"); Check("stale-release", false);
                     Set("lastHitter", 1); Set("lastPlayer", 1); Set("flying", false);
-                    if (!tap) LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(@"\[hit\] Poor \| miss: shuttle inactive.*"));
+                    if (!tap) LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(@"\[hit\] Poor \| miss: Kok tidak aktif.*"));
                     Hit(); Check("inactive-shuttle", false); Set("flying", true);
                     Time.timeScale = 0; Hit(); Check("paused-input", false); Time.timeScale = 1;
                     Set("replaying", true); Hit(); Check("replay-input", false); Set("replaying", false);

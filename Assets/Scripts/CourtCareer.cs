@@ -8,6 +8,8 @@ namespace JustSmash
     public sealed partial class CourtPrototype
     {
         public Career ActiveCareer { get; private set; }
+        internal enum CareerSaveState { None, PendingFailed, CommitFailed, Saved }
+        internal CareerSaveState CareerSaveStatus { get; private set; }
         string careerMatchId, careerOpponent, careerEvent;
         int careerSlot, careerAthlete, careerStart;
         bool careerResultSaved;
@@ -15,19 +17,68 @@ namespace JustSmash
         bool[] badCareerSlots;
         AvatarAppearance draftAppearance = new AvatarAppearance(), editedAppearance;
         GameScreen appearanceReturn;
-        bool previewBack;
-        static readonly string[] AppearanceActions = { "Model kaus", "Warna kaus", "Warna celana", "Warna sepatu", "Warna rambut", "Warna frame", "Warna grip", "Warna senar", "Putar", "Simpan penampilan", "Kembali" };
-        bool CareerMenu => screen == GameScreen.CareerSlots || screen == GameScreen.CareerCreate || screen == GameScreen.CareerCalendar || screen == GameScreen.CareerArchive || screen == GameScreen.CareerAppearance;
-        int[] AppearanceChoices() => new[] { editedAppearance.jerseyStyleId, editedAppearance.jerseyColorId, editedAppearance.pantsId, editedAppearance.shoeColorId,
-            editedAppearance.hairColorId, editedAppearance.racketColorId, editedAppearance.gripColorId, editedAppearance.stringColorId };
+        bool previewBack, previewCloseUp;
+        static readonly string[] AppearanceActions = {
+            "Wajah", "Gaya rambut", "Model kaus", "Warna kaus", "Warna celana", "Warna sepatu", "Warna rambut",
+            "Warna frame", "Warna grip", "Warna senar", "Putar", "Lihat wajah", "Simpan penampilan", "Kembali"
+        };
+        bool CareerMenu => screen == GameScreen.CareerSlots || screen == GameScreen.CareerCreate
+            || screen == GameScreen.CareerSummary || screen == GameScreen.CareerCalendar
+            || screen == GameScreen.CareerAthlete || screen == GameScreen.CareerArchive
+            || screen == GameScreen.CareerAppearance;
+        static int AppearanceSwatchCount(string action) => action switch
+        {
+            "Wajah" => AvatarAppearance.FaceTones.Length,
+            "Warna kaus" => AvatarAppearance.Palette.Length,
+            "Warna celana" => AvatarAppearance.Dark.Length,
+            "Warna sepatu" => AvatarAppearance.Palette.Length,
+            "Warna rambut" => AvatarAppearance.Dark.Length,
+            "Warna frame" => AvatarAppearance.Palette.Length,
+            "Warna grip" => AvatarAppearance.Dark.Length,
+            "Warna senar" => AvatarAppearance.Palette.Length,
+            _ => 0
+        };
+        Color[] AppearanceSwatches(string action, out int active)
+        {
+            active = -1;
+            var a = editedAppearance; if (a == null) return null;
+            switch (action)
+            {
+                case "Wajah": active = a.faceId; return AvatarAppearance.FaceTones;
+                case "Warna kaus": active = a.jerseyColorId; return AvatarAppearance.Palette;
+                case "Warna celana": active = a.pantsId; return AvatarAppearance.Dark;
+                case "Warna sepatu": active = a.shoeColorId; return AvatarAppearance.Palette;
+                case "Warna rambut": active = a.hairColorId; return AvatarAppearance.Dark;
+                case "Warna frame": active = a.racketColorId; return AvatarAppearance.Palette;
+                case "Warna grip": active = a.gripColorId; return AvatarAppearance.Dark;
+                case "Warna senar": active = a.stringColorId; return AvatarAppearance.Palette;
+                default: return null;
+            }
+        }
+        void ApplyAppearanceSwatch(string action, int swatch)
+        {
+            var a = editedAppearance;
+            switch (action)
+            {
+                case "Wajah": a.faceId = swatch; break;
+                case "Warna kaus": a.jerseyColorId = swatch; break;
+                case "Warna celana": a.pantsId = swatch; break;
+                case "Warna sepatu": a.shoeColorId = swatch; break;
+                case "Warna rambut": a.hairColorId = swatch; break;
+                case "Warna frame": a.racketColorId = swatch; break;
+                case "Warna grip": a.gripColorId = swatch; break;
+                case "Warna senar": a.stringColorId = swatch; break;
+            }
+            PoseCareerPreview();
+        }
         void PoseCareerPreview()
         {
             player.SetPositionAndRotation(new Vector3(1.1f, 0, -4.7f), Quaternion.Euler(0, previewBack ? 0 : 180, 0));
             playerVisual.Present("Menu", 1, Vector3.zero, Vector3.zero, 0, 0);
             playerVisual.ApplyAppearance(editedAppearance);
-            view.fieldOfView = 39;
-            float distance = 3.7f;
-            Vector3 center = player.position + Vector3.up * 1.02f;
+            view.fieldOfView = previewCloseUp ? 28 : 39;
+            float distance = previewCloseUp ? 1.65f : 3.7f;
+            Vector3 center = player.position + Vector3.up * (previewCloseUp ? 1.48f : 1.02f);
             Vector3 target = center - Vector3.right * (distance * Mathf.Tan(view.fieldOfView * Mathf.Deg2Rad * .5f) * view.aspect * .57f);
             view.transform.SetPositionAndRotation(target - Vector3.forward * distance, Quaternion.identity);
         }
@@ -42,19 +93,21 @@ namespace JustSmash
                 }
                 playerVisual.ApplyAppearance(null); OpenUi(appearanceReturn); return;
             }
-            int index = Array.IndexOf(AppearanceActions, action);
             var a = editedAppearance;
-            switch (index)
+            switch (action)
             {
-                case 0: a.jerseyStyleId = (a.jerseyStyleId + 1) % AvatarAppearance.Styles.Length; break;
-                case 1: a.jerseyColorId = (a.jerseyColorId + 1) % AvatarAppearance.Palette.Length; break;
-                case 2: a.pantsId = (a.pantsId + 1) % AvatarAppearance.Dark.Length; break;
-                case 3: a.shoeColorId = (a.shoeColorId + 1) % AvatarAppearance.Palette.Length; break;
-                case 4: a.hairColorId = (a.hairColorId + 1) % AvatarAppearance.Dark.Length; break;
-                case 5: a.racketColorId = (a.racketColorId + 1) % AvatarAppearance.Palette.Length; break;
-                case 6: a.gripColorId = (a.gripColorId + 1) % AvatarAppearance.Dark.Length; break;
-                case 7: a.stringColorId = (a.stringColorId + 1) % AvatarAppearance.Palette.Length; break;
-                case 8: previewBack = !previewBack; break;
+                case "Wajah": a.faceId = (a.faceId + 1) % AvatarAppearance.FaceTones.Length; break;
+                case "Gaya rambut": a.hairStyleId = (a.hairStyleId + 1) % AvatarAppearance.HairStyles.Length; break;
+                case "Model kaus": a.jerseyStyleId = (a.jerseyStyleId + 1) % AvatarAppearance.Styles.Length; break;
+                case "Warna kaus": a.jerseyColorId = (a.jerseyColorId + 1) % AvatarAppearance.Palette.Length; break;
+                case "Warna celana": a.pantsId = (a.pantsId + 1) % AvatarAppearance.Dark.Length; break;
+                case "Warna sepatu": a.shoeColorId = (a.shoeColorId + 1) % AvatarAppearance.Palette.Length; break;
+                case "Warna rambut": a.hairColorId = (a.hairColorId + 1) % AvatarAppearance.Dark.Length; break;
+                case "Warna frame": a.racketColorId = (a.racketColorId + 1) % AvatarAppearance.Palette.Length; break;
+                case "Warna grip": a.gripColorId = (a.gripColorId + 1) % AvatarAppearance.Dark.Length; break;
+                case "Warna senar": a.stringColorId = (a.stringColorId + 1) % AvatarAppearance.Palette.Length; break;
+                case "Putar": previewBack = !previewBack; break;
+                case "Lihat wajah": previewCloseUp = !previewCloseUp; break;
             }
             PoseCareerPreview();
         }
@@ -62,11 +115,17 @@ namespace JustSmash
         {
             ActiveCareer = null; careerSlots = new Career[2]; badCareerSlots = new bool[2];
             OpenUi(GameScreen.CareerSlots);
+            string firstNotice = null;
             for (int i = 0; i < 2; i++)
             {
                 int index = i;
-                if (!CareerAction(() => careerSlots[index] = CareerStore.Load(index + 1))) badCareerSlots[i] = true;
+                if (!CareerAction(() => careerSlots[index] = CareerStore.Load(index + 1)))
+                {
+                    badCareerSlots[i] = true;
+                    firstNotice ??= menuNotice;
+                }
             }
+            menuNotice = firstNotice;
         }
         bool CareerAction(Action action)
         {
@@ -93,23 +152,33 @@ namespace JustSmash
             else BeginExhibition();
             playerVisual.ApplyAppearance(career.appearance);
             careerMatchId = career.PendingMatchId; careerOpponent = career.Opponent; careerEvent = career.Event; careerResultSaved = false;
+            CareerSaveStatus = CareerSaveState.None;
         }
         void RecordCareerResult()
         {
             if (careerMatchId == null || careerResultSaved || !ShowMatchResult) return;
-            careerResultSaved = CareerAction(() =>
+            string result = null;
+            if (!CareerAction(() => result = CareerStore.StageResult(ActiveCareer, CaptureMatch())))
             {
-                string result = CareerStore.StageResult(ActiveCareer, CaptureMatch());
-                ChangeCareer(next => next.CompleteMatch(careerMatchId, result));
-            });
-            if (!careerResultSaved) menuNotice = "Hasil belum tersimpan. " + menuNotice;
+                CareerSaveStatus = CareerSaveState.PendingFailed;
+                menuNotice = "Hasil belum tersimpan (gagal menulis .pending). " + menuNotice;
+                return;
+            }
+            if (!CareerAction(() => ChangeCareer(next => next.CompleteMatch(careerMatchId, result))))
+            {
+                CareerSaveStatus = CareerSaveState.CommitFailed;
+                menuNotice = "Hasil belum tersimpan (gagal menerapkan ke slot). " + menuNotice;
+                return;
+            }
+            careerResultSaved = true;
+            CareerSaveStatus = CareerSaveState.Saved;
         }
         void LeaveCareerMatch()
         {
             if (Match == null || reviewAvailable || finalPointPending || replaying) return;
             if (!careerResultSaved && Match.Winner < 0 && !CareerAction(() => ChangeCareer(next => next.matchSnapshot = CaptureMatch()))) return;
             if (Match.Winner >= 0 && !careerResultSaved) return;
-            careerMatchId = careerOpponent = careerEvent = null;
+            careerMatchId = careerOpponent = careerEvent = null; CareerSaveStatus = CareerSaveState.None;
             FinishUiAction("Menu"); SetStaminaStat(70); OpenUi(GameScreen.CareerCalendar);
         }
         string[] CareerActions()
@@ -117,8 +186,23 @@ namespace JustSmash
             if (screen == GameScreen.CareerSlots) return new[] { "Slot 1", "Slot 2", "Kembali" };
             if (screen == GameScreen.CareerAppearance) return AppearanceActions;
             if (screen == GameScreen.CareerCreate) return new[] { "Atlet", "Titik awal", "Ubah Penampilan", "Buat Atlet", "Kembali" };
-            if (screen == GameScreen.CareerArchive) return new[] { "Kembali" };
-            var actions = new List<string>();
+            var actions = new List<string> { "TabRingkasan", "TabKalender", "TabAtlet", "TabArsip", "Kembali" };
+            if (screen == GameScreen.CareerArchive) return actions.ToArray();
+            if (screen == GameScreen.CareerSummary)
+            {
+                if (ActiveCareer.tier >= 0) actions.Add(string.IsNullOrEmpty(ActiveCareer.matchSnapshot) ? "Main laga" : "Lanjut laga");
+                else actions.Add("Buka kalender");
+                actions.Add("Ubah Penampilan");
+                return actions.ToArray();
+            }
+            if (screen == GameScreen.CareerAthlete)
+            {
+                actions.Add("Latihan atlet");
+                if (ActiveCareer.skillPoints >= 3 && ActiveCareer.stamina < 100) actions.Add("Tambah stamina");
+                if (ActiveCareer.skillPoints >= 3 && ActiveCareer.technique < 100) actions.Add("Tambah teknik");
+                actions.Add("Ubah Penampilan");
+                return actions.ToArray();
+            }
             if (ActiveCareer.tier >= 0) actions.Add(string.IsNullOrEmpty(ActiveCareer.matchSnapshot) ? "Main laga" : "Lanjut laga");
             else
             {
@@ -126,20 +210,24 @@ namespace JustSmash
                 actions.Add("Latihan atlet");
                 if (ActiveCareer.skillPoints >= 3 && ActiveCareer.stamina < 100) actions.Add("Tambah stamina");
             }
-            actions.Add("Ubah Penampilan"); actions.Add("Arsip"); actions.Add("Kembali"); return actions.ToArray();
+            actions.Add("Ubah Penampilan"); actions.Add("Arsip"); return actions.ToArray();
         }
         void ActOnCareer(string action)
         {
             if (screen == GameScreen.CareerAppearance) { EditAppearance(action); return; }
+            if (action == "TabRingkasan") { OpenUi(GameScreen.CareerSummary); return; }
+            if (action == "TabKalender" || action == "Buka kalender") { OpenUi(GameScreen.CareerCalendar); return; }
+            if (action == "TabAtlet") { OpenUi(GameScreen.CareerAthlete); return; }
+            if (action == "TabArsip" || action == "Arsip") { OpenUi(GameScreen.CareerArchive); return; }
             if (action == "Ubah Penampilan")
             {
-                appearanceReturn = screen; editedAppearance = (ActiveCareer?.appearance ?? draftAppearance).Copy(); previewBack = false;
+                appearanceReturn = screen; editedAppearance = (ActiveCareer?.appearance ?? draftAppearance).Copy(); previewBack = false; previewCloseUp = false;
                 OpenUi(GameScreen.CareerAppearance); SetShuttleVisible(false); PoseCareerPreview(); return;
             }
             if (action == "Kembali")
             {
                 if (screen == GameScreen.CareerSlots) OpenUi(GameScreen.Home);
-                else if (screen == GameScreen.CareerArchive) OpenUi(GameScreen.CareerCalendar);
+                else if (screen == GameScreen.CareerArchive || screen == GameScreen.CareerSummary || screen == GameScreen.CareerAthlete) OpenUi(GameScreen.CareerCalendar);
                 else OpenCareerSlots();
                 return;
             }
@@ -161,7 +249,6 @@ namespace JustSmash
                 })) OpenUi(GameScreen.CareerCalendar);
                 return;
             }
-            if (action == "Arsip") { OpenUi(GameScreen.CareerArchive); return; }
             CareerAction(() =>
             {
                 if (action == "Main laga" || action == "Lanjut laga") StartCareerMatch(action == "Lanjut laga");
@@ -169,21 +256,36 @@ namespace JustSmash
                 {
                     if (action == "Latihan atlet") c.Train();
                     else if (action == "Tambah stamina") c.Upgrade(true);
+                    else if (action == "Tambah teknik") c.Upgrade(false);
                     else c.Register(Array.IndexOf(Career.Events, action));
                 });
             });
         }
         string CareerLabel(string action)
         {
+            if (action == "TabRingkasan") return "Ringkasan";
+            if (action == "TabKalender") return "Kalender";
+            if (action == "TabAtlet") return "Atlet";
+            if (action == "TabArsip") return "Arsip";
             if (screen == GameScreen.CareerAppearance)
             {
-                int index = Array.IndexOf(AppearanceActions, action);
-                if (index >= 0 && index < 8)
+                var a = editedAppearance;
+                return action switch
                 {
-                    string[] labels = index == 0 ? AvatarAppearance.Styles : index == 2 || index == 4 || index == 6 ? AvatarAppearance.DarkNames : AvatarAppearance.Colors;
-                    return action + " · " + labels[AppearanceChoices()[index]];
-                }
-                if (action == "Putar") return previewBack ? "Lihat depan" : "Lihat belakang";
+                    "Wajah" => "Wajah · " + AvatarAppearance.FaceNames[a.faceId],
+                    "Gaya rambut" => "Rambut · " + AvatarAppearance.HairStyles[a.hairStyleId],
+                    "Model kaus" => "Model · " + AvatarAppearance.Styles[a.jerseyStyleId],
+                    "Warna kaus" => "Kaus · " + AvatarAppearance.Colors[a.jerseyColorId],
+                    "Warna celana" => "Celana · " + AvatarAppearance.DarkNames[a.pantsId],
+                    "Warna sepatu" => "Sepatu · " + AvatarAppearance.Colors[a.shoeColorId],
+                    "Warna rambut" => "Cat · " + AvatarAppearance.DarkNames[a.hairColorId],
+                    "Warna frame" => "Frame · " + AvatarAppearance.Colors[a.racketColorId],
+                    "Warna grip" => "Grip · " + AvatarAppearance.DarkNames[a.gripColorId],
+                    "Warna senar" => "Senar · " + AvatarAppearance.Colors[a.stringColorId],
+                    "Putar" => previewBack ? "Lihat depan" : "Lihat belakang",
+                    "Lihat wajah" => previewCloseUp ? "Lihat penuh" : "Lihat wajah",
+                    _ => action
+                };
             }
             if (screen == GameScreen.CareerSlots && action.StartsWith("Slot ", StringComparison.Ordinal))
             {
@@ -194,28 +296,85 @@ namespace JustSmash
             if (action == "Titik awal") return Career.Starts[careerStart];
             return action;
         }
-        string CareerRankingLabel => $"Hari {ActiveCareer.day + 1}  ·  Ranking {(ActiveCareer.Rank == 0 ? "—" : ActiveCareer.Rank.ToString())}  ·  {ActiveCareer.Points} poin  ·  {ActiveCareer.Titles} gelar  ·  Hadiah {ActiveCareer.Prize}" + (ActiveCareer.Rank == 1 ? "  ·  No. 1 dunia" : "  ·  Target: No. 1 dunia");
+        string CareerRankingLabel
+        {
+            get
+            {
+                var c = ActiveCareer;
+                var ranks = new List<string> { c.Rank > 0 ? $"Dunia #{c.Rank} ({c.WorldPoints} poin WC)" : "Dunia —" };
+                if (c.TierRank(0) > 0) ranks.Add($"Kota #{c.TierRank(0)} ({c.TierPoints(0)} poin)");
+                if (c.TierRank(1) > 0) ranks.Add($"Nasional #{c.TierRank(1)} ({c.TierPoints(1)} poin)");
+                return $"Hari {c.day + 1}  ·  {string.Join("  ·  ", ranks)}  ·  {c.Titles} gelar  ·  Total {c.Points} poin  ·  Hadiah {c.Prize}" + (c.Rank == 1 ? "  ·  No. 1 dunia" : "");
+            }
+        }
+        string CareerRequirementLabel
+        {
+            get
+            {
+                var c = ActiveCareer;
+                if (c.unlocked == 0) return "Syarat Sirkuit Nasional: Juara Open Kota";
+                if (c.unlocked == 1) return "Syarat World Circuit: Juara Sirkuit Nasional";
+                return c.Rank == 0 ? "World Circuit terbuka · Main untuk masuk ranking dunia"
+                    : c.Rank == 1 ? "Status: Peringkat No. 1 dunia" : "Target: No. 1 dunia di World Circuit";
+            }
+        }
         void DrawCareer(float w, float h)
         {
             if (screen == GameScreen.CareerAppearance)
             {
-                PanelUi(new Rect(24, 24, 674, 620));
-                GUI.Label(new Rect(48, 48, 620, 80), "Ubah penampilan", titleStyle);
+                PanelUi(new Rect(24, 24, 672, h - 48));
+                GUI.Label(new Rect(44, 42, 620, 64), "Ubah penampilan", titleStyle);
                 return;
             }
-            PanelUi(new Rect(24, 24, 990, 630));
-            string title = screen == GameScreen.CareerSlots ? "Karier Tunggal" : screen == GameScreen.CareerCreate ? "Buat atlet" : screen == GameScreen.CareerArchive ? "Arsip turnamen" : ActiveCareer.Name;
-            GUI.Label(new Rect(48, 40, 900, 70), title, titleStyle);
+            float pw = w - 48;
+            PanelUi(new Rect(24, 24, pw, h - 48));
+            string title = screen == GameScreen.CareerSlots ? "Karier Tunggal"
+                : screen == GameScreen.CareerCreate ? "Buat atlet"
+                : screen == GameScreen.CareerSummary ? $"{ActiveCareer?.Name} · Ringkasan"
+                : screen == GameScreen.CareerAthlete ? $"{ActiveCareer?.Name} · Atlet"
+                : screen == GameScreen.CareerArchive ? $"{ActiveCareer?.Name} · Arsip"
+                : $"{ActiveCareer?.Name} · Kalender";
+            GUI.Label(new Rect(44, 34, pw - 240, 56), title, titleStyle);
             if (ActiveCareer == null) return;
             var c = ActiveCareer;
-            GUI.Label(new Rect(48, 110, 920, 42), CareerRankingLabel, smallStyle);
-            GUI.Label(new Rect(48, 153, 920, 44), c.Event == null ? $"{Career.Starts[c.start]}  ·  Stamina {c.stamina}  ·  {c.skillPoints} poin latihan" : $"{c.Event}  ·  {(c.round == 0 ? "Semifinal" : "Final")} vs {c.Opponent}", bodyStyle);
-            if (screen == GameScreen.CareerArchive)
+            string nextObjective = c.tier >= 0
+                ? $"Laga berikutnya: {c.Event} · {(c.round == 0 ? "Semifinal" : "Final")} vs {c.Opponent} — Tekan {(string.IsNullOrEmpty(c.matchSnapshot) ? "MAIN LAGA" : "LANJUT LAGA")}"
+                : $"Belum terdaftar · Pilih {Career.Events[c.unlocked]} di Kalender untuk bertanding atau Latihan atlet";
+            GUI.Label(new Rect(44, 160, pw - 48, 34), CareerRankingLabel, smallStyle);
+            FillUi(new Rect(44, 200, pw - 48, 92), new Color(.04f, .16f, .44f, .88f));
+            GUI.Label(new Rect(58, 208, pw - 76, 36), nextObjective, bodyStyle);
+            GUI.Label(new Rect(58, 250, pw - 76, 34), $"{Career.Starts[c.start]}  ·  Stamina {c.stamina}  ·  Teknik {c.technique}  ·  Poin latihan {c.skillPoints}  ·  {CareerRequirementLabel}", smallStyle);
+            if (screen == GameScreen.CareerSummary)
+            {
+                float infoX = 44 + Mathf.Min(420, (pw - 64) * .48f) + 24, infoW = pw - infoX - 24;
+                GUI.Label(new Rect(infoX, 312, infoW, 34), "RIWAYAT TERBARU", bodyStyle);
+                if (c.history.Count == 0) GUI.Label(new Rect(infoX, 354, infoW, 36), "Belum ada pertandingan selesai.", smallStyle);
+                for (int i = 0; i < Mathf.Min(5, c.history.Count); i++)
+                {
+                    var r = c.history[c.history.Count - 1 - i];
+                    GUI.Label(new Rect(infoX, 354 + i * 40, infoW, 36), $"Hari {r.day + 1} · {Career.Events[r.tier]} {(r.round == 0 ? "SF" : "F")} · {(r.winner == 0 ? "Menang" : "Kalah")} {r.games[0]}:{r.games[1]} · +{r.rankingPoints} poin", smallStyle);
+                }
+            }
+            else if (screen == GameScreen.CareerAthlete)
+            {
+                float infoX = 44 + Mathf.Min(420, (pw - 64) * .48f) + 24, infoW = pw - infoX - 24;
+                var a = c.appearance;
+                GUI.Label(new Rect(infoX, 312, infoW, 34), "PROFIL & PERALATAN", bodyStyle);
+                GUI.Label(new Rect(infoX, 354, infoW, 32), $"Asal: {Career.Starts[c.start]}", smallStyle);
+                GUI.Label(new Rect(infoX, 390, infoW, 32), $"Stamina: {c.stamina}/100  ·  Teknik: {c.technique}/100  ·  Poin latihan: {c.skillPoints}", smallStyle);
+                GUI.Label(new Rect(infoX, 426, infoW, 32), $"Wajah: {AvatarAppearance.FaceNames[a.faceId]}  ·  Rambut: {AvatarAppearance.HairStyles[a.hairStyleId]} ({AvatarAppearance.DarkNames[a.hairColorId]})", smallStyle);
+                GUI.Label(new Rect(infoX, 462, infoW, 32), $"Outfit: {AvatarAppearance.Styles[a.jerseyStyleId]} {AvatarAppearance.Colors[a.jerseyColorId]} / Celana {AvatarAppearance.DarkNames[a.pantsId]}", smallStyle);
+                GUI.Label(new Rect(infoX, 498, infoW, 32), $"Raket: Frame {AvatarAppearance.Colors[a.racketColorId]} · Grip {AvatarAppearance.DarkNames[a.gripColorId]} · Senar {AvatarAppearance.Colors[a.stringColorId]}", smallStyle);
+            }
+            else if (screen == GameScreen.CareerArchive)
+            {
+                if (c.history.Count == 0) GUI.Label(new Rect(44, 312, pw - 48, 36), "Belum ada riwayat turnamen.", bodyStyle);
                 for (int i = 0; i < Mathf.Min(8, c.history.Count); i++)
                 {
                     var r = c.history[c.history.Count - 1 - i];
-                    GUI.Label(new Rect(50, 205 + i * 46, 920, 42), $"Hari {r.day + 1}  ·  {Career.Events[r.tier]}  ·  {(r.winner != 0 ? "Tersingkir" : r.round == 1 ? "Juara" : "Menang")} {r.games[0]}:{r.games[1]}  ·  +{r.rankingPoints} poin", smallStyle);
+                    GUI.Label(new Rect(44, 312 + i * 42, pw - 48, 38), $"Hari {r.day + 1}  ·  {Career.Events[r.tier]} ({(r.round == 0 ? "Semifinal" : "Final")})  ·  {(r.winner != 0 ? "Tersingkir" : r.round == 1 ? "Juara" : "Menang")} {r.games[0]}:{r.games[1]}  ·  +{r.rankingPoints} poin  ·  +{r.prize} hadiah", smallStyle);
                 }
+            }
         }
     }
 }

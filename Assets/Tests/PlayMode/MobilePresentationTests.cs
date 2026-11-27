@@ -488,7 +488,7 @@ public class MobilePresentationTests : PreferenceFixture
                 Assert.That(Call("BeginReplay"), Is.EqualTo(true));
                 float frozen = (float)type.GetField("pointWait", Hidden).GetValue(court);
                 type.GetMethod("ContinuePoint", Hidden).Invoke(court, new object[] { 5f });
-                Assert.That((float)type.GetField("pointWait", Hidden).GetValue(court), Is.EqualTo(scenario == "Match" ? 0 : frozen));
+                Assert.That((float)type.GetField("pointWait", Hidden).GetValue(court), Is.EqualTo(frozen));
                 yield return null; Call("SkipReplay"); yield return null; Check(winner);
                 type.GetMethod("ContinuePoint", Hidden).Invoke(court, new object[] { 3.01f }); yield return null;
                 Assert.That((string)type.GetProperty("FlowStage").GetValue(court), Is.EqualTo(scenario == "Match" ? "MatchEnd" : "GameEnd"));

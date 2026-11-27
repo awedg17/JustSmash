@@ -1296,6 +1296,384 @@ public class MobileMatchTests : PreferenceFixture
         }
         File.WriteAllLines(Evidence + "/nine-matches.jsonl", results);
     }
+    [UnityTest, Timeout(120000), Category("Capture")] public IEnumerator CaptureTouchControlAndAimVerificationAt1x()
+    {
+        Assert.That(Application.isBatchMode, Is.False); yield return CaptureAt1280x720();
+        LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");
+        yield return SceneManager.LoadSceneAsync("Boot"); yield return null;
+        type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("JustSmash.CourtPrototype")).First(t => t != null);
+        court = UnityEngine.Object.FindFirstObjectByType(type);
+        Call("ConfigureJoystick", "Fixed");
+        Call("ConfigureJoystickSensitivity", .5f);
+        type.GetField("assisted", Hidden).SetValue(court, false);
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+        type.GetProperty("ShowTouchOverlay").SetValue(court, true);
+        Time.timeScale = 1; Application.targetFrameRate = 60;
+        Call("StartMatch");
+        for (int i = 0; i < 3 && Get<string>("FlowStage") != "Serving"; i++) Call("AdvanceFlow");
+        Call("Serve", false);
+        type.GetField("serviceFlight", Hidden).SetValue(court, false);
+        Directory.CreateDirectory(CaptureEvidence);
+        string stem = CaptureEvidence + "/touch-control-aim";
+        var player = GameObject.Find("Player").transform; var shuttle = GameObject.Find("Shuttle").transform;
+        var down = type.GetMethod("PointerDown", Hidden);
+        var move = type.GetMethod("PointerMove", Hidden);
+        var up = type.GetMethod("PointerUp", Hidden);
+        var stick = (Rect)type.GetProperty("StickRect", Hidden).GetValue(court);
+        var lobRect = (Rect)type.GetMethod("ShotRect", Hidden).Invoke(court, new object[] { 1 });
+
+        var recorder = new System.Diagnostics.Process();
+        recorder.StartInfo = new System.Diagnostics.ProcessStartInfo("ffmpeg", "-hide_banner -loglevel error -n -use_wallclock_as_timestamps 1 -f rawvideo -pixel_format rgba -video_size " + Screen.width + "x" + Screen.height + " -framerate 1000 -i pipe:0 -fps_mode passthrough -enc_time_base 1:1000 -vf vflip,pad=ceil(iw/2)*2:ceil(ih/2)*2 -an -c:v libx264 -preset ultrafast -crf 20 -pix_fmt yuv420p -movflags +faststart \"" + stem + "-video.mp4\"") { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true };
+        recorder.Start();
+        captureStarted = Time.realtimeSinceStartup; captureGameStarted = Time.time; firstRecordedFrame = 0;
+        timeline = new StreamWriter(stem + "-timeline.csv");
+        timeline.WriteLine("realSeconds,gameSeconds,state,hitter,stroke,strokeElapsed,playerX,playerY,playerZ,shuttleX,shuttleY,shuttleZ,screen,flow");
+        var events = new List<string> { "realSeconds,scenario" }; int frames = 0;
+        void Mark(string label) => events.Add((Time.realtimeSinceStartup - captureStarted).ToString(System.Globalization.CultureInfo.InvariantCulture) + "," + label);
+        void ParkShuttle()
+        {
+            type.GetField("lastHitter", Hidden).SetValue(court, 1);
+            type.GetField("lastPlayer", Hidden).SetValue(court, 1);
+            type.GetField("flying", Hidden).SetValue(court, true);
+            type.GetField("velocity", Hidden).SetValue(court, Vector3.zero);
+            shuttle.position = new Vector3(0, 5.5f, 3f);
+        }
+        IEnumerator HoldRecord(float seconds, bool keepParked)
+        {
+            float until = Time.realtimeSinceStartup + seconds, next = Time.realtimeSinceStartup;
+            while (Time.realtimeSinceStartup < until)
+            {
+                if (keepParked) ParkShuttle();
+                yield return new WaitForEndOfFrame();
+                if (Time.realtimeSinceStartup < next) continue;
+                WriteFrame(recorder); frames++; next += 1f / 30;
+            }
+        }
+        try
+        {
+            player.position = new Vector3(0, 0, -4f); ParkShuttle();
+            yield return HoldRecord(.35f, true);
+
+            // 1. Touch empty left space -> athlete remains still.
+            Vector3 startPos = player.position;
+            Vector2 emptyLeft = stick.center + new Vector2(210f, -120f);
+            Mark("touch-empty-left-start");
+            down.Invoke(court, new object[] { 10, emptyLeft });
+            yield return HoldRecord(.65f, true);
+            up.Invoke(court, new object[] { 10 });
+            Assert.That(Vector3.Distance(startPos, player.position), Is.LessThan(.001f), "Empty space touch moved athlete");
+            Mark("touch-empty-left-end");
+            yield return HoldRecord(.25f, true);
+
+            // 2. Run left -> release stick -> tap Lob -> shuttle lands center.
+            Mark("run-left-start");
+            down.Invoke(court, new object[] { 11, stick.center });
+            move.Invoke(court, new object[] { 11, stick.center + Vector2.left * 70f });
+            yield return HoldRecord(.50f, true);
+            up.Invoke(court, new object[] { 11 });
+            Mark("release-stick-tap-lob-center");
+            yield return HoldRecord(.18f, true);
+            ParkShuttle();
+            shuttle.position = player.TransformPoint(new Vector3(.3f, 2.1f, .35f));
+            down.Invoke(court, new object[] { 12, lobRect.center });
+            yield return HoldRecord(.15f, false);
+            up.Invoke(court, new object[] { 12 });
+            Vector3 landCenter = ((Transform)type.GetField("landingShadow", Hidden).GetValue(court)).position;
+            Assert.That(Mathf.Abs(landCenter.x), Is.LessThan(.15f), "Released stick Lob did not target center");
+            yield return HoldRecord(.95f, false);
+
+            // 3. Hold left -> tap Lob with second finger -> shuttle lands left.
+            player.position = new Vector3(.6f, 0, -4f); ParkShuttle();
+            yield return HoldRecord(.25f, true);
+            Mark("hold-left-and-lob-left-start");
+            down.Invoke(court, new object[] { 13, stick.center });
+            move.Invoke(court, new object[] { 13, stick.center + Vector2.left * 70f });
+            yield return HoldRecord(.35f, true);
+            ParkShuttle();
+            shuttle.position = player.TransformPoint(new Vector3(.3f, 2.1f, .35f));
+            down.Invoke(court, new object[] { 14, lobRect.center });
+            yield return HoldRecord(.15f, false);
+            up.Invoke(court, new object[] { 14 });
+            Vector3 landLeft = ((Transform)type.GetField("landingShadow", Hidden).GetValue(court)).position;
+            Assert.That(landLeft.x, Is.LessThan(-1.5f), "Held left Lob did not target left");
+            yield return HoldRecord(.85f, false);
+            up.Invoke(court, new object[] { 13 });
+            Mark("sequence-end");
+            yield return HoldRecord(.25f, false);
+        }
+        finally
+        {
+            type.GetProperty("ShowTouchOverlay").SetValue(court, false);
+            timeline.Dispose(); timeline = null; recorder.StandardInput.Close();
+            Assert.That(recorder.WaitForExit(15000), Is.True); Assert.That(recorder.ExitCode, Is.Zero); recorder.Dispose();
+            File.WriteAllLines(stem + "-events.csv", events);
+            File.WriteAllText(stem + "-capture.json", "{\"frames\":" + frames + ",\"controlled\":true,\"timeScale\":1,\"touchOverlay\":true}");
+        }
+    }
+    [UnityTest, Timeout(120000)] public IEnumerator SideAndBackShuttlePlaytestDiagnostics()
+    {
+        LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");
+        yield return SceneManager.LoadSceneAsync("Boot"); yield return null;
+        type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("JustSmash.CourtPrototype")).First(t => t != null);
+        court = UnityEngine.Object.FindFirstObjectByType(type);
+        Call("EnterTraining");
+        Call("ConfigureJoystick", "Fixed");
+        Call("ConfigureJoystickSensitivity", .5f);
+        type.GetField("assisted", Hidden).SetValue(court, false);
+        type.GetProperty("ReplayMode").SetValue(court, 2);
+
+        var player = GameObject.Find("Player").transform;
+        var shuttle = GameObject.Find("Shuttle").transform;
+        var driver = player.Find("AthleteVisual").GetComponent(AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("JustSmash.AthleteVisual")).First(t => t != null));
+        float armLength = (float)driver.GetType().GetField("armLength", Hidden).GetValue(driver);
+        float reachLimit = armLength + .38f - .012f;
+        var reachFailure = driver.GetType().GetMethod("ReachFailure");
+        var down = type.GetMethod("PointerDown", Hidden);
+        var move = type.GetMethod("PointerMove", Hidden);
+        var up = type.GetMethod("PointerUp", Hidden);
+        var stick = (Rect)type.GetProperty("StickRect", Hidden).GetValue(court);
+        var tick = type.GetMethod("FixedUpdate", Hidden);
+
+        var rows = new List<string> { "category,scenario,stroke,playerX,playerZ,shuttleX,shuttleY,shuttleZ,localX,localY,localZ,horizDist,shoulderDist,reachLimit,hit,reason,classification" };
+        int totalProbes = 0, probeHits = 0, probeMiss = 0, liveRuns = 0, liveHits = 0, posLate = 0, boundaryBlock = 0;
+
+        void RecordRow(string category, string scenario, string strokeName, bool hit, string reason, string classification)
+        {
+            Vector3 local = player.InverseTransformPoint(shuttle.position);
+            bool high = strokeName == "Smash" || strokeName == "Clear" || strokeName == "Drop";
+            Vector3 shoulder = player.TransformPoint(new Vector3(.183f, high ? 1.46f : 1.34f, -.018f));
+            float shoulderDist = Vector3.Distance(shuttle.position, shoulder);
+            float horiz = new Vector2(local.x, local.z).magnitude;
+            rows.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "{0},{1},{2},{3:F3},{4:F3},{5:F3},{6:F3},{7:F3},{8:F3},{9:F3},{10:F3},{11:F3},{12:F3},{13:F3},{14},{15},{16}",
+                category, scenario, strokeName, player.position.x, player.position.z,
+                shuttle.position.x, shuttle.position.y, shuttle.position.z,
+                local.x, local.y, local.z, horiz, shoulderDist, reachLimit, hit,
+                reason.Replace(",", ";"), classification));
+        }
+
+        // A. Side, backhand, slightly-behind, far-behind, and floor contact boundary probes at BOTH ends.
+        var probes = new (string name, string stroke, Vector3 localOffset, bool expectHit, string expectReason)[] {
+            ("side-forehand-near", "Lift", new Vector3(.65f, 1.25f, .20f), true, "OK"),
+            ("side-backhand-near", "Lift", new Vector3(-.65f, 1.25f, .20f), true, "OK"),
+            ("side-forehand-wide", "Lift", new Vector3(.85f, 1.25f, .20f), true, "OK"),
+            ("side-backhand-wide", "Lift", new Vector3(-.85f, 1.25f, .20f), true, "OK"),
+            ("side-forehand-high", "Clear", new Vector3(.75f, 2.05f, .20f), true, "OK"),
+            ("side-backhand-high", "Clear", new Vector3(-.75f, 2.05f, .20f), true, "OK"),
+            ("back-center-high", "Clear", new Vector3(.20f, 2.05f, -.50f), true, "OK"),
+            ("back-left-high", "Clear", new Vector3(-.55f, 2.05f, -.50f), true, "OK"),
+            ("back-center-low", "Lift", new Vector3(.20f, 1.20f, -.55f), true, "OK"),
+            ("back-low-crouch-042", "Lift", new Vector3(-.20f, .42f, -.20f), true, "OK"),
+            ("back-far-out", "Clear", new Vector3(0f, 2.05f, -1.35f), false, "Di luar jangkauan"),
+            ("floor-too-low", "Lift", new Vector3(.20f, .04f, .20f), false, "Kok terlalu rendah"),
+            ("height-gap-clear-140", "Clear", new Vector3(.30f, 1.40f, .35f), false, "Kok terlalu rendah"),
+            ("height-gap-lift-195", "Lift", new Vector3(.30f, 1.95f, .35f), false, "Kok terlalu tinggi")
+        };
+        var bed = (Transform)driver.GetType().GetProperty("StringBed").GetValue(driver);
+        foreach (bool swapped in new[] { false, true })
+        {
+            float endSign = swapped ? -1f : 1f;
+            foreach (var p in probes)
+            {
+                Call("Feed", "Lob");
+                player.SetPositionAndRotation(new Vector3(0, 0, -3.5f * endSign), Quaternion.Euler(0, swapped ? 180f : 0f, 0));
+                type.GetField("velocity", Hidden).SetValue(court, Vector3.zero);
+                shuttle.position = player.TransformPoint(p.localOffset);
+                string fail = (string)reachFailure.Invoke(driver, new object[] { shuttle.position, p.stroke });
+                Call("BeginShot", p.stroke);
+                bool hit = (bool)Call("ReleaseShot");
+                float bedGap = Vector3.Distance(bed.position, shuttle.position);
+                Assert.That(hit, Is.EqualTo(p.expectHit), (swapped ? "Swapped/" : "Near/") + p.name + ": " + fail);
+                if (p.expectHit) Assert.That(bedGap, Is.LessThan(.035f), p.name + " StringBed gap");
+                else Assert.That(fail, Does.Contain(p.expectReason), p.name);
+                if (!swapped)
+                {
+                    string cls = hit ? "HIT_OK" : (fail.Contains("tinggi") || fail.Contains("rendah") ? "BOUNDARY_HEIGHT_WINDOW" : "BOUNDARY_REACH_RADIUS");
+                    RecordRow("boundary-probe", p.name, p.stroke, hit, hit ? $"OK|gap={bedGap:F3}" : fail, cls);
+                    totalProbes++; if (hit) probeHits++; else probeMiss++;
+                }
+            }
+        }
+
+        // B. Live approach playtest with Fixed joystick + TapShot across side & back trajectories.
+        var approaches = new (string name, string stroke, Vector3 targetLanding, float arcDuration)[] {
+            ("live-side-right-mid", "Lift", new Vector3(2.2f, .04f, -3.5f), 1.45f),
+            ("live-side-left-mid", "Lift", new Vector3(-2.2f, .04f, -3.5f), 1.45f),
+            ("live-side-left-fast", "Lift", new Vector3(-2.3f, .04f, -3.5f), 1.15f),
+            ("live-back-center-deep", "Clear", new Vector3(0f, .04f, -6.1f), 1.55f),
+            ("live-back-left-deep", "Clear", new Vector3(-1.9f, .04f, -6.0f), 1.55f),
+            ("live-back-right-deep", "Clear", new Vector3(1.9f, .04f, -6.0f), 1.55f),
+            ("live-back-left-fast", "Clear", new Vector3(-2.1f, .04f, -6.2f), 1.25f),
+            ("live-front-side-left", "Net", new Vector3(-1.9f, .04f, -1.5f), 1.35f)
+        };
+        var launchVel = type.GetMethod("LaunchVelocity");
+        foreach (var a in approaches)
+        {
+            Call("StartMatch");
+            for (int i = 0; i < 3 && Get<string>("FlowStage") != "Serving"; i++) Call("AdvanceFlow");
+            Call("Serve", true);
+            type.GetMethod("ResetAthleteMovement", Hidden).Invoke(court, null);
+            player.position = new Vector3(0, 0, -3.5f);
+            type.GetField("serviceFlight", Hidden).SetValue(court, false);
+            type.GetField("lastHitter", Hidden).SetValue(court, 1);
+            type.GetField("lastPlayer", Hidden).SetValue(court, 1);
+            shuttle.position = new Vector3(0, 2.2f, 4.0f);
+            Vector3 v = (Vector3)launchVel.Invoke(null, new object[] { shuttle.position, a.targetLanding, a.arcDuration });
+            type.GetField("velocity", Hidden).SetValue(court, v);
+
+            down.Invoke(court, new object[] { 40, stick.center });
+            bool hit = false;
+            string bestCloseReason = "Belum dalam jangkauan";
+            float minHoriz = float.MaxValue;
+            Vector3 closestShuttle = shuttle.position, closestPlayer = player.position;
+
+            for (int step = 0; step < 120 && Get<bool>("Flying") && (int)type.GetField("lastHitter", Hidden).GetValue(court) == 1; step++)
+            {
+                Vector3 toTarget = a.targetLanding - player.position;
+                Vector2 dir = new Vector2(toTarget.x, toTarget.z);
+                if (dir.magnitude > .22f)
+                {
+                    Vector2 stickDir = dir.normalized * new Vector2(1f, -1f);
+                    move.Invoke(court, new object[] { 40, stick.center + stickDir * 70f });
+                }
+                else
+                    move.Invoke(court, new object[] { 40, stick.center });
+
+                tick.Invoke(court, null);
+                float hDist = Vector2.Distance(new Vector2(player.position.x, player.position.z), new Vector2(shuttle.position.x, shuttle.position.z));
+                string chosen = shuttle.position.y >= 1.45f ? a.stroke : (a.stroke == "Clear" ? "Lift" : a.stroke);
+                string reasonNow = (string)reachFailure.Invoke(driver, new object[] { shuttle.position, chosen });
+                if (hDist < minHoriz) { minHoriz = hDist; closestShuttle = shuttle.position; closestPlayer = player.position; bestCloseReason = reasonNow.Length == 0 ? "OK" : reasonNow; }
+
+                if (reasonNow.Length == 0 && (int)type.GetField("lastHitter", Hidden).GetValue(court) == 1)
+                {
+                    Call("TapShot", chosen);
+                    if ((int)type.GetField("lastHitter", Hidden).GetValue(court) == 0) { hit = true; bestCloseReason = (string)type.GetField("feedback", Hidden).GetValue(court); break; }
+                }
+            }
+            up.Invoke(court, new object[] { 40 });
+            if (!hit) { player.position = closestPlayer; shuttle.position = closestShuttle; }
+            string cls = hit ? "HIT_OK" : (minHoriz > 0.85f ? "POSITION_TOO_SLOW_OR_FAR" : "CONTACT_BOUNDARY_AT_INTERCEPT");
+            RecordRow("live-approach", a.name, a.stroke, hit, bestCloseReason, cls);
+            liveRuns++; if (hit) liveHits++; else if (cls == "POSITION_TOO_SLOW_OR_FAR") posLate++; else boundaryBlock++;
+        }
+
+        File.WriteAllLines(Path.Combine(EvidenceDirectory, "side-back-playtest.csv"), rows);
+        string summary = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "{{\"armLength\":{0:F4},\"reachLimit\":{1:F4},\"probes\":{2},\"probeHits\":{3},\"probeMisses\":{4},\"liveRuns\":{5},\"liveHits\":{6},\"positionFailures\":{7},\"boundaryFailures\":{8}}}",
+            armLength, reachLimit, totalProbes, probeHits, probeMiss, liveRuns, liveHits, posLate, boundaryBlock);
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "side-back-summary.json"), summary);
+        TestContext.WriteLine("SIDE_BACK_SUMMARY: " + summary);
+        Assert.That(totalProbes, Is.EqualTo(14));
+        Assert.That(liveRuns, Is.EqualTo(8));
+        Assert.That(liveHits, Is.EqualTo(8), "All 8 reachable live side & back trajectories should save cleanly");
+    }
+    [UnityTest, Timeout(120000), Category("Capture")] public IEnumerator CaptureAnimationAndGripSequenceAt1xAndSideSlowMo()
+    {
+        Assert.That(Application.isBatchMode, Is.False); yield return CaptureAt1280x720();
+        LogAssert.Expect(LogType.Log, "[boot] config v1; scene=Boot");
+        yield return SceneManager.LoadSceneAsync("Boot"); yield return null;
+        type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("JustSmash.CourtPrototype")).First(t => t != null);
+        court = UnityEngine.Object.FindFirstObjectByType(type);
+        Call("EnterTraining");
+        ((Behaviour)court).enabled = false;
+        Directory.CreateDirectory(CaptureEvidence);
+        string stem = CaptureEvidence + "/anim-grip-sequence";
+        var player = GameObject.Find("Player").transform;
+        var model = player.Find("AthleteVisual");
+        var driver = model.GetComponents<MonoBehaviour>().Single(t => t.GetType().Name == "AthleteVisual");
+        var present = driver.GetType().GetMethod("Present");
+        var hips = model.Find("Root/Hips");
+        var lThigh = hips.Find("LeftUpLeg"); var lKnee = lThigh.Find("LeftLeg"); var lFoot = lKnee.Find("LeftFoot");
+        var rThigh = hips.Find("RightUpLeg"); var rKnee = rThigh.Find("RightLeg"); var rFoot = rKnee.Find("RightFoot");
+        var rHand = model.Find("Root/Hips/Spine/Spine1/RightShoulder/RightArm/RightForeArm/RightHand");
+        var socket = rHand.Find("RightHandProp");
+        var grip = (Transform)driver.GetType().GetProperty("Grip").GetValue(driver);
+        var lHand = model.Find("Root/Hips/Spine/Spine1/LeftShoulder/LeftArm/LeftForeArm/LeftHand");
+
+        // Verify biomechanical posture invariants before filming.
+        present.Invoke(driver, new object[] { "Menu", 1f, Vector3.zero, Vector3.zero, 0f, 0f });
+        float menuHipY = hips.position.y;
+        present.Invoke(driver, new object[] { "Ready", 1f, Vector3.zero, Vector3.zero, 0f, 0f });
+        float readyHipY = hips.position.y;
+        Assert.That(readyHipY, Is.LessThan(menuHipY - .05f), "Ready pose must lower center of mass");
+        float kneeAngle = Vector3.Angle(rThigh.position - rKnee.position, rFoot.position - rKnee.position);
+        Assert.That(kneeAngle, Is.LessThan(165f), "Ready pose knees must bend under load");
+        Assert.That(rFoot.position.y, Is.EqualTo(.13f).Within(.015f));
+        Assert.That(Vector3.Distance(grip.position, socket.position), Is.LessThan(.005f), "Grip must stay in palm");
+        Vector3 readyLeftHand = lHand.position;
+        present.Invoke(driver, new object[] { "Net", .18f, player.TransformPoint(new Vector3(.45f, 1.0f, .35f)), Vector3.zero, 0f, 0f });
+        Assert.That(Vector3.Distance(lHand.position, readyLeftHand), Is.GreaterThan(.15f), "Free arm must counterbalance lunge");
+
+        var recorder = new System.Diagnostics.Process();
+        recorder.StartInfo = new System.Diagnostics.ProcessStartInfo("ffmpeg", "-hide_banner -loglevel error -n -use_wallclock_as_timestamps 1 -f rawvideo -pixel_format rgba -video_size " + Screen.width + "x" + Screen.height + " -framerate 1000 -i pipe:0 -fps_mode passthrough -enc_time_base 1:1000 -vf vflip,pad=ceil(iw/2)*2:ceil(ih/2)*2 -an -c:v libx264 -preset ultrafast -crf 20 -pix_fmt yuv420p -movflags +faststart \"" + stem + "-video.mp4\"") { UseShellExecute = false, RedirectStandardInput = true, CreateNoWindow = true };
+        recorder.Start();
+        captureStarted = Time.realtimeSinceStartup; captureGameStarted = Time.time; firstRecordedFrame = 0;
+        timeline = new StreamWriter(stem + "-timeline.csv");
+        timeline.WriteLine("realSeconds,gameSeconds,state,hitter,stroke,strokeElapsed,playerX,playerY,playerZ,shuttleX,shuttleY,shuttleZ,screen,flow");
+        int frames = 0;
+
+        IEnumerator RunSequence(float timeRate, bool sideCam)
+        {
+            player.SetPositionAndRotation(new Vector3(0, 0, -3.5f), Quaternion.identity);
+            driver.GetType().GetMethod("SetTravel").Invoke(driver, new object[] { 0f });
+            for (int i = 0; i < 6; i++) present.Invoke(driver, new object[] { "Ready", 1f, Vector3.zero, Vector3.zero, 0f, 0f });
+            void SetCam()
+            {
+                if (sideCam)
+                {
+                    Camera.main.fieldOfView = 44;
+                    Camera.main.transform.position = player.position + new Vector3(3.5f, 1.18f, .1f);
+                    Camera.main.transform.LookAt(player.position + Vector3.up * 1.15f);
+                }
+                else
+                {
+                    Camera.main.fieldOfView = 48;
+                    Camera.main.transform.position = new Vector3(.2f, 4f, -14.2f);
+                    Camera.main.transform.LookAt(new Vector3(.2f, 0, -1f));
+                }
+            }
+            // 1. Ready (0.4s)
+            for (float t = 0; t < .4f; t += 1f / 30f * timeRate)
+            {
+                present.Invoke(driver, new object[] { "Ready", 1f + t, Vector3.zero, Vector3.zero, 0f, 0f });
+                SetCam(); yield return new WaitForEndOfFrame(); WriteFrame(recorder); frames++;
+            }
+            // 2. Shuffle / move right + forward (0.6s)
+            for (float t = 0; t < .6f; t += 1f / 30f * timeRate)
+            {
+                Vector3 step = new Vector3(.65f, 0, .8f) * (1f / 30f * timeRate / .6f);
+                player.position += step;
+                present.Invoke(driver, new object[] { "Ready", 1f, Vector3.zero, step, 0f, 0f });
+                SetCam(); yield return new WaitForEndOfFrame(); WriteFrame(recorder); frames++;
+            }
+            // 3. Low Lunge + Recovery (0.70s)
+            Vector3 lowContact = player.TransformPoint(new Vector3(.48f, .95f, .38f));
+            for (float t = 0; t < .70f; t += 1f / 30f * timeRate)
+            {
+                present.Invoke(driver, new object[] { "Net", t, lowContact, Vector3.zero, 0f, 0f });
+                SetCam(); yield return new WaitForEndOfFrame(); WriteFrame(recorder); frames++;
+            }
+            // 4. Overhead Clear/Smash + Recovery (0.75s)
+            Vector3 highContact = player.TransformPoint(new Vector3(.30f, 2.25f, .25f));
+            for (float t = 0; t < .75f; t += 1f / 30f * timeRate)
+            {
+                present.Invoke(driver, new object[] { "Smash", t, highContact, Vector3.zero, 0f, 0f });
+                SetCam(); yield return new WaitForEndOfFrame(); WriteFrame(recorder); frames++;
+            }
+        }
+        try
+        {
+            yield return RunSequence(1f, false); // Part 1: 1x main camera
+            yield return RunSequence(.35f, true); // Part 2: 0.35x slow-mo side camera
+        }
+        finally
+        {
+            timeline.Dispose(); timeline = null; recorder.StandardInput.Close();
+            Assert.That(recorder.WaitForExit(15000), Is.True); Assert.That(recorder.ExitCode, Is.Zero); recorder.Dispose();
+            File.WriteAllText(stem + "-capture.json", "{\"frames\":" + frames + ",\"main1x\":true,\"sideSlowMo035x\":true}");
+        }
+    }
 }
 
 [DefaultExecutionOrder(32000)]

@@ -20,14 +20,70 @@ namespace JustSmash
         bool flying, assisted, charging, jumpHeld, servingCharge;
         int moveFinger = -1, shotFinger = -1, jumpFinger = -1, serveFinger = -1, pressedShot = -1;
         float chargedAt, serveChargedAt, jumpAt = -10, jumpPhase = 1, jumpY, lastFeed, swingAt = -10, diveRecoveryUntil = -10;
+        const float StickRadius = 95f, StickDeadZone = .12f, StickCurvePower = 1.6f, AimNeutralX = .18f;
         Vector2 stickCenter;
         Vector2 DefaultStickCenter => new Vector2(128, UiHeight - 132);
         public string JoystickMode { get; private set; } = "Fixed";
+        public float JoystickSensitivity { get; private set; } = .5f;
+        public string CameraPreset { get; private set; } = "Standar";
+        public float CameraZoom { get; private set; } = .5f;
+        public float CameraHeight { get; private set; } = .5f;
+        public float CameraAngle { get; private set; } = .5f;
+        public void ConfigureCameraPreset(string preset)
+        {
+            if (preset == "Standar") ConfigureCamera(.5f, .5f, .5f, "Standar");
+            else if (preset == "Tinggi") ConfigureCamera(.35f, .90f, .65f, "Tinggi");
+            else if (preset == "Dekat") ConfigureCamera(.85f, .30f, .35f, "Dekat");
+            else if (preset == "Kustom") ConfigureCamera(CameraZoom, CameraHeight, CameraAngle, "Kustom");
+            else throw new System.ArgumentException("Unknown camera preset", nameof(preset));
+        }
+        public void ConfigureCamera(float zoom, float height, float angle, string preset = "Kustom")
+        {
+            if (!float.IsFinite(zoom) || !float.IsFinite(height) || !float.IsFinite(angle))
+                throw new System.ArgumentOutOfRangeException(nameof(zoom));
+            CameraZoom = Mathf.Clamp01(zoom);
+            CameraHeight = Mathf.Clamp01(height);
+            CameraAngle = Mathf.Clamp01(angle);
+            CameraPreset = preset;
+            LocalGameData.SetString("cameraPreset", CameraPreset);
+            LocalGameData.SetFloat("cameraZoom", CameraZoom);
+            LocalGameData.SetFloat("cameraHeight", CameraHeight);
+            LocalGameData.SetFloat("cameraAngle", CameraAngle);
+            LocalGameData.Save();
+        }
+        public void ResetCamera() => ConfigureCameraPreset("Standar");
+        void ApplyGameplayCamera(bool immediate)
+        {
+            float dist = Mathf.Lerp(16.4f, 12.0f, CameraZoom);
+            float fov = Mathf.Lerp(51f, 45f, CameraZoom);
+            float baseY = Mathf.Lerp(2.8f, 5.2f, CameraHeight);
+            float lookZ = Mathf.Lerp(-2.2f, .2f, CameraAngle);
+            view.fieldOfView = fov;
+            var cam = EndPoint(new Vector3(.2f, baseY + jumpY * .5f, -dist - jumpY * .4f));
+            // Change ends must not interpolate through the court and clip both athletes.
+            view.transform.position = immediate || view.transform.position.z * cam.z < 0 ? cam : Vector3.Lerp(view.transform.position, cam, Time.deltaTime * 6);
+            view.transform.LookAt(EndPoint(new Vector3(.2f, jumpY * .15f, lookZ)));
+        }
         public void ConfigureJoystick(string mode)
         {
             if (mode != "Fixed" && mode != "Floating") throw new System.ArgumentException("Unknown joystick mode", nameof(mode));
-            JoystickMode = mode; moveFinger = -1; analog = Vector2.zero; stickCenter = DefaultStickCenter;
+            JoystickMode = mode; moveFinger = -1; SetAnalog(Vector2.zero); stickCenter = DefaultStickCenter;
             LocalGameData.SetString("joystickMode", mode); LocalGameData.Save();
+        }
+        public void ConfigureJoystickSensitivity(float value)
+        {
+            if (!float.IsFinite(value) || value < 0 || value > 1) throw new System.ArgumentOutOfRangeException(nameof(value));
+            JoystickSensitivity = value;
+            LocalGameData.SetFloat("joystickSensitivity", value); LocalGameData.Save();
+        }
+        public static Vector2 ShapeJoystickDelta(Vector2 delta, float sensitivity)
+        {
+            float radius = Mathf.Lerp(105f, 35f, Mathf.Clamp01(sensitivity));
+            Vector2 raw = Vector2.ClampMagnitude(delta / radius, 1f);
+            float mag = raw.magnitude;
+            if (mag <= StickDeadZone) return Vector2.zero;
+            float scaled = Mathf.Pow((mag - StickDeadZone) / (1f - StickDeadZone), StickCurvePower);
+            return (raw / mag) * scaled * new Vector2(1f, -1f);
         }
         string stroke = "Clear", feedback = "Feed lob to begin", lastStroke = "Clear";
         Vector2 jumpStart, jumpDrag;
@@ -36,7 +92,7 @@ namespace JustSmash
         public static float CanvasScale(Vector2 size) => Mathf.Min(size.x / 1280f, size.y / 720f);
         Vector2 UiOrigin => new Vector2(Screen.safeArea.x, Screen.height - Screen.safeArea.yMax);
         float UiWidth => Screen.safeArea.width / uiScale;
-        float EndSign => Match != null && Match.EndsSwapped ? -1 : 1;
+        float EndSign => (Match != null && (HoldingSetScore ? flowEnds : Match.EndsSwapped)) ? -1 : 1;
         Vector3 EndPoint(Vector3 p) => new Vector3(p.x * EndSign, p.y, p.z * EndSign);
         public SinglesMatch Match { get; private set; }
         public string MatchState { get; private set; } = "Training";
@@ -75,7 +131,11 @@ namespace JustSmash
             pointReview = corrected ? PointReview.Overturned : PointReview.Confirmed;
             feedback = "Review: " + (actualIn ? "IN" : "OUT") + (corrected ? " | call overturned | left " : " | call confirmed | left ") + Match.Challenges[0];
             if (SetPointPending) FinishPoint();
-            else BeginReplay(); // Line review is not an automatic end-of-set replay.
+            else
+            {
+                pointReplayed = false;
+                BeginReplay(); // Line review is not an automatic end-of-set replay.
+            }
             return true;
         }
         public float Energy { get; private set; } = 100;
@@ -284,13 +344,15 @@ namespace JustSmash
             pointWait = s.pointWait;
             finalPointPending = ended && (s.finalPointPending || s.reviewAvailable);
             SpectacularMoment = s.spectacular;
-            Match = s.match; flowEnds = Match.EndsSwapped;
+            Match = s.match;
+            flowGame = s.flowGame == 0 ? s.match.GameNumber : s.flowGame;
+            flowEnds = s.state == "Point" && s.match.Winner < 0 && flowGame < s.match.GameNumber ? !Match.EndsSwapped : Match.EndsSwapped;
             player.rotation = Quaternion.Euler(0, EndSign < 0 ? 180 : 0, 0);
             opponent.rotation = Quaternion.Euler(0, EndSign < 0 ? 0 : 180, 0);
             judgeErrorUsed = s.judgeErrorUsed; judgeState = s.judgeState; MatchState = s.state; player.position = s.player; opponent.position = s.opponent; shuttle.position = s.shuttle;
             velocity = s.velocity; flying = s.flying; assisted = s.assisted; lastHitter = s.hitter;
             energyGame = s.energyGame;
-            flowStage = string.IsNullOrEmpty(s.flowStage) ? null : s.flowStage; flowGame = s.flowGame == 0 ? s.match.GameNumber : s.flowGame;
+            flowStage = string.IsNullOrEmpty(s.flowStage) ? null : s.flowStage;
             beforePoint = s.beforePoint; pointCause = s.pointCause; pointReview = s.pointReview;
             reviewAvailable = s.reviewAvailable; announcedIn = s.announcedIn; lastLanding = s.landing; serviceFlight = s.serviceFlight;
             StaminaStat = s.staminaStat; Energy = Mathf.Min(s.energy, EnergyCapacity); jumpAt = Time.time - s.jumpElapsed; jumpPhase = s.jumpElapsed; jumpY = s.jumpHeight;
@@ -338,8 +400,10 @@ namespace JustSmash
         {
             if (!paused) return; // Resume remains explicit; never advance behind an OS overlay.
             ClearGameplayInput();
-            if (Match != null && (Match.Winner < 0 || careerMatchId != null && !ShowMatchResult)) RunMenuAction("Save");
+            if (Match != null && (Match.Winner < 0 || (careerMatchId != null && !careerResultSaved))) RunMenuAction("Save");
+            string pendingNotice = careerMatchId != null && !careerResultSaved ? menuNotice : null;
             if (screen == GameScreen.Playing || screen == GameScreen.Training) OpenUi(GameScreen.Pause);
+            if (!string.IsNullOrEmpty(pendingNotice)) menuNotice = pendingNotice;
             Time.timeScale = 0;
         }
         public bool Flying => flying;
@@ -350,7 +414,8 @@ namespace JustSmash
         public static Vector3 CourtPoint(Vector2 direction, float power)
         {
             direction = Vector2.ClampMagnitude(direction, 1);
-            return new Vector3(direction.x == 0 ? 0 : direction.x < 0 ? -1.8f : 1.8f, 0, direction.y < -.33f ? 1.1f : direction.y > .33f ? 5.8f : 3.5f);
+            float x = Mathf.Abs(direction.x) < AimNeutralX ? 0 : direction.x < 0 ? -1.8f : 1.8f;
+            return new Vector3(x, 0, direction.y < -.33f ? 1.1f : direction.y > .33f ? 5.8f : 3.5f);
         }
         public static Vector3 StepVelocity(Vector3 v, float dt) => v + (Physics.gravity - BootDiagnostics.Current.drag * v.magnitude * v) * dt;
         public static Vector3 ElbowPosition(Vector3 shoulder, Vector3 hand, float upper, float lower)
@@ -627,20 +692,20 @@ namespace JustSmash
         {
             if (!float.IsFinite(value.x) || !float.IsFinite(value.y)) throw new System.ArgumentOutOfRangeException(nameof(value));
             analog = Vector2.ClampMagnitude(value, 1);
-            if (analog.sqrMagnitude > .01f) lastAim = analog;
+            lastAim = analog;
         }
         public void BeginShot(string kind)
         {
             if (System.Array.IndexOf(shots, kind) < 0) throw new System.ArgumentException("Invalid stroke");
             if (Time.timeScale == 0 || replaying || (Match != null && MatchState != "Rally")) return;
-            stroke = kind; shotAim = lastAim; charging = true; chargedAt = Time.time;
+            stroke = kind; shotAim = analog; charging = true; chargedAt = Time.time;
             if (BootDiagnostics.Current.inputLogging) BootDiagnostics.Log("input", "charge " + kind);
         }
         public void TapShot(string kind)
         {
             if (Time.timeScale == 0 || replaying || (Match != null && MatchState != "Rally")) return;
             int index = System.Array.IndexOf(shots, kind);
-            shotIntent.Queue(index, lastAim, .5f, Time.time);
+            shotIntent.Queue(index, analog, .5f, Time.time);
             TryBufferedShot();
         }
         public float LastTiming { get; private set; }
@@ -757,10 +822,7 @@ namespace JustSmash
                 view.transform.position = focus + new Vector3(0, .35f, -end * distance);
                 view.transform.LookAt(focus); return;
             }
-            var cam = EndPoint(new Vector3(.2f, 4f + jumpY * .5f, -14.2f - jumpY * .4f));
-            // Change ends must not interpolate through the court and clip both athletes.
-            view.transform.position = view.transform.position.z * cam.z < 0 ? cam : Vector3.Lerp(view.transform.position, cam, Time.deltaTime * 6);
-            view.transform.LookAt(EndPoint(new Vector3(.2f, jumpY * .15f, -1)));
+            ApplyGameplayCamera(false);
         }
         [System.Serializable] struct ReplayFrame
         {
@@ -772,7 +834,7 @@ namespace JustSmash
             public float pElapsed, oElapsed, pJump, pLand, pTravel, oTravel;
         }
         readonly System.Collections.Generic.List<ReplayFrame> replay = new System.Collections.Generic.List<ReplayFrame>();
-        bool replaying;
+        bool replaying, pointReplayed;
         float replayAt, replayGameAt;
         double replayGameAtDouble;
         ReplayFrame liveFrame;
@@ -783,7 +845,9 @@ namespace JustSmash
         public bool BeginReplay()
         {
             if (ReplayMode == 2 || replay.Count < 2 || replaying) return false;
+            ClearGameplayInput();
             StopCourtAudio();
+            if (MatchState == "Point" || MatchState == "MatchEnd") pointReplayed = true;
             liveFrame = CaptureFrame();
             liveCameraPosition = view.transform.position; liveCameraRotation = view.transform.rotation;
             replaying = true; replayAt = Time.unscaledTime; replayGameAt = Time.time; replayGameAtDouble = Time.timeAsDouble; return true;
@@ -990,6 +1054,7 @@ namespace JustSmash
                     pointCause = serviceFlight && !legalService ? PointCause.ServiceArea : announcedIn ? PointCause.In : PointCause.Out;
                     serviceFlight = false;
                     ScorePoint(winner); BootDiagnostics.Log("scoring", "point winner=" + winner); PlaySound("score");
+                    shuttle.position = after;
                 }
             }
             shuttle.position = after;
@@ -1006,17 +1071,15 @@ namespace JustSmash
         Rect ServeRect => ControlRect(7, new Vector2(UiWidth, UiHeight));
         void PointerDown(int id, Vector2 point)
         {
+            RecordTouchDown(id, point);
             if (UiPointerDown(id, point) || !GameplayInputEnabled || testerOpen) return;
-            bool insideStick = StickRect.Contains(point);
-            bool leftSide = point.x < UiWidth * .48f && point.y > 160 && !ServeRect.Contains(point);
-            if ((insideStick || leftSide) && moveFinger == -1)
+            bool insideStick = (point - stickCenter).sqrMagnitude <= StickRadius * StickRadius;
+            bool floatingZone = JoystickMode == "Floating" && point.x < UiWidth * .48f && point.y > 160 && !ServeRect.Contains(point);
+            if ((insideStick || floatingZone) && moveFinger == -1)
             {
                 moveFinger = id;
                 if (JoystickMode == "Fixed")
-                {
-                    Vector2 delta = point - stickCenter;
-                    SetAnalog(Vector2.ClampMagnitude(delta / 70f, 1f) * new Vector2(1, -1));
-                }
+                    SetAnalog(ShapeJoystickDelta(point - stickCenter, JoystickSensitivity));
                 else
                 {
                     stickCenter = point;
@@ -1030,27 +1093,35 @@ namespace JustSmash
         void PointerMove(int id, Vector2 point)
         {
             menuPoint = point;
+            RecordTouchMove(id, point);
             if (!GameplayInputEnabled) return;
             if (id == moveFinger)
-            {
-                Vector2 delta = point - stickCenter;
-                SetAnalog(Vector2.ClampMagnitude(delta / 70f, 1f) * new Vector2(1, -1));
-            }
+                SetAnalog(ShapeJoystickDelta(point - stickCenter, JoystickSensitivity));
             if (id == jumpFinger) { jumpDrag = point; for (int i = 0; i < shots.Length; i++) if (ShotRect(i).Contains(point) && (!charging || stroke != shots[i])) BeginShot(shots[i]); }
         }
         void PointerUp(int id)
         {
-            if (UiPointerUp(id) || !GameplayInputEnabled) return;
-            if (id == moveFinger) { moveFinger = -1; analog = Vector2.zero; stickCenter = DefaultStickCenter; }
+            RecordTouchUp(id);
+            if (UiPointerUp(id)) return;
+            if (!GameplayInputEnabled)
+            {
+                if (id == moveFinger) { moveFinger = -1; SetAnalog(Vector2.zero); stickCenter = DefaultStickCenter; }
+                if (id == shotFinger) shotFinger = pressedShot = -1;
+                if (id == jumpFinger) { charging = false; jumpFinger = -1; jumpHeld = false; }
+                if (id == serveFinger) CancelServe();
+                return;
+            }
+            if (id == moveFinger) { moveFinger = -1; SetAnalog(Vector2.zero); stickCenter = DefaultStickCenter; }
             if (id == shotFinger) { ReleaseShot(); shotFinger = pressedShot = -1; }
             if (id == jumpFinger) { if (charging) ReleaseShot(); jumpFinger = -1; jumpHeld = false; }
             if (id == serveFinger) { ReleaseServe(); serveFinger = -1; }
         }
         void PointerCancel(int id)
         {
+            RecordTouchUp(id);
             if (id == menuFinger) { menuFinger = -1; menuAction = null; }
             if (id == shotFinger || id == jumpFinger) { shotIntent.Clear(); charging = false; }
-            if (id == moveFinger) { moveFinger = -1; analog = Vector2.zero; stickCenter = DefaultStickCenter; }
+            if (id == moveFinger) { moveFinger = -1; SetAnalog(Vector2.zero); stickCenter = DefaultStickCenter; }
             if (id == shotFinger) shotFinger = pressedShot = -1;
             if (id == jumpFinger) { jumpFinger = -1; jumpHeld = false; }
             if (id == serveFinger) CancelServe();

@@ -79,7 +79,7 @@ public class PreferenceFixture
         CreateEvidenceDirectory(EvidenceDirectory);
         string prefs = Path.Combine(directory, "prefs"); Directory.CreateDirectory(prefs);
         foreach (var pair in new Dictionary<string, string> {
-            { "assist", "Manual" }, { "joystickMode", "Fixed" }, { "difficulty", "Normal" },
+            { "assist", "Manual" }, { "joystickMode", "Fixed" }, { "joystickSensitivity", "0.5" }, { "difficulty", "Normal" },
             { "replayMode", "1" }, { "targetFps", "30" }, { "volume", "0.7" },
             { "trailBrightness", "0.85" }, { "shadowBrightness", "0.9" },
             { "trailTint", "FFFFFF" }, { "shadowTint", "1A2424" }

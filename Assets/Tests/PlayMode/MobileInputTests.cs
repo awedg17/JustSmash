@@ -338,7 +338,7 @@ public class MobileInputTests : PreferenceFixture
         float energy = Get<float>("Energy");
         yield return new WaitForSeconds(.18f);
         type.GetMethod("FixedUpdate", Hidden).Invoke(court, null);
-        Assert.That((string)type.GetField("feedback", Hidden).GetValue(court), Is.EqualTo("Terlalu jauh"));
+        Assert.That((string)type.GetField("feedback", Hidden).GetValue(court), Is.EqualTo("Poor | miss: Di luar jangkauan"));
         Assert.That(Get<float>("Energy"), Is.EqualTo(energy));
         type.GetMethod("PointerCancel", Hidden).Invoke(court, new object[] { 92 });
         Assert.That(Call("ShotPressed", 4), Is.EqualTo(false));

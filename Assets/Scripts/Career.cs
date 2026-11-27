@@ -37,7 +37,15 @@ namespace JustSmash
         // ponytail: fictional best-ten, 52-week ranking against seeded fixed benchmarks.
         public int Points => history.Where(r => r.day > day - 364).OrderByDescending(r => r.rankingPoints).Take(10).Sum(r => r.rankingPoints);
         public int Prize => history.Sum(r => r.prize);
-        public int Rank => Points == 0 ? 0 : 1 + Enumerable.Range(1, 64).Count(i => i * 20 >= Points);
+        public int TierPoints(int entry) => entry < 0 || entry >= Events.Length ? throw new ArgumentOutOfRangeException(nameof(entry))
+            : history.Where(r => r.tier == entry && r.day > day - 364).OrderByDescending(r => r.rankingPoints).Take(10).Sum(r => r.rankingPoints);
+        public int TierRank(int entry)
+        {
+            int points = TierPoints(entry);
+            return points == 0 ? 0 : 1 + Enumerable.Range(1, 64).Count(i => i * (20 << entry) >= points);
+        }
+        public int WorldPoints => TierPoints(2);
+        public int Rank => TierRank(2);
         public void Register(int entry)
         {
             if (tier >= 0 || entry < 0 || entry > unlocked) throw new InvalidOperationException("Turnamen belum tersedia");
@@ -111,7 +119,7 @@ namespace JustSmash
             : Path.Combine(LocalGameData.Root, "careers", $"slot-{slot}-v1.json");
         static Career Read(string path, int slot)
         {
-            if (new FileInfo(path).Length > 16000000) throw new IOException("Slot terlalu besar");
+            if (new FileInfo(path).Length > 16000000) throw new ArgumentException("Slot terlalu besar");
             var value = JsonUtility.FromJson<Career>(File.ReadAllText(path));
             if (value == null) throw new ArgumentException("Slot kosong");
             value.Validate(slot);
